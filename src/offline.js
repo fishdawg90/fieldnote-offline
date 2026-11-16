@@ -39,7 +39,8 @@ function updateControls(){
  const pending=state.entries.some(e=>['queued','processing'].includes(e.transcriptionState));
  $('#prepareOffline').disabled=setupBusy||!!transcriptionBusy||!!state.recording;
  $('#verifyOffline').disabled=setupBusy||!!transcriptionBusy||pending||!offlineFilesReady||!!state.recording;
- $('#modelChoice').disabled=setupBusy||!!transcriptionBusy||pending||!!state.recording;
+ $('#modelChoice').disabled=setupBusy||!!transcriptionBusy||!!state.recording;
+ $('#removeModel').disabled=setupBusy||!!transcriptionBusy||!!state.recording;
  $('#takeVoice').disabled=!state.selected||!!state.recording||recordOpening;
  $('#nativeRecord').disabled=!state.selected||!!state.recording;
  const entry=state.entries.find(e=>e.id===state.detail?.id),locked=entry&&['queued','processing'].includes(entry.transcriptionState);
@@ -55,6 +56,7 @@ function openSettings(name='general'){settingsTab(name);if(!$('#settings').open)
 async function prepareOffline(){
  if(setupBusy||transcriptionBusy||state.recording)return toast('Finish the current recording or transcription first.');
  setupBusy=true;updateControls();$('#setupProgress').hidden=false;
+ let prepared=false;
  const model=activeModel(),modelBytes=model.bytes,MODEL_REVISION=model.revision,MODEL_FILES=model.files,MODEL_CACHE=model.cache;
  try{
   await ensureServiceWorker();
@@ -87,11 +89,11 @@ async function prepareOffline(){
   const check=await readiness();if(!check.ready)throw Error('Some offline files are missing: '+check.missing.join(', '));
   status('All offline files downloaded. Loading Whisper locally to check compatibility…');
   await askWorker('load');
-  status('Offline files ready. Run the local sample test, then repeat it in airplane mode.');
+  prepared=true;status('Offline files ready. Run the local sample test, then repeat it in airplane mode.');
   const persistent=await navigator.storage?.persist?.().catch(()=>false);
   toast(persistent?'Offline files saved with persistent storage.':'Offline files saved. Keep backups; the browser may reclaim storage.');
- }catch(e){console.error('Offline preparation:',e);const estimate=await navigator.storage?.estimate?.().catch(()=>null);status('Setup incomplete: '+e.message+(estimate?' · Storage used '+mb(estimate.usage)+' of '+mb(estimate.quota)+' allowed by this browser.':''));toast('Setup incomplete — completed downloads are kept for retry.');}
- finally{setupBusy=false;await readiness().catch(()=>{});updateControls();void drainQueue();}
+ }catch(e){console.error('Offline preparation:',e);const estimate=await navigator.storage?.estimate?.().catch(()=>null);status('Setup incomplete: '+e.message+(estimate?' · Storage used '+mb(estimate.usage)+' of '+mb(estimate.quota)+' allowed by this browser.':''));toast(e.name==='QuotaExceededError'?'Browser storage limit reached. Remove an unused model download in Settings, or use Tiny.':'Setup incomplete — completed downloads are kept for retry.');}
+ finally{setupBusy=false;await readiness().catch(()=>{});updateControls();if(prepared)void drainQueue();}
 }
 function resetWorker(){whisperWorker?.terminate();whisperWorker=null;workerCall=null}
 function askWorker(type,audio,modelKey=selectedModelKey){
@@ -185,12 +187,14 @@ async function initOffline(){
  navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='shell-progress')status(e.data.text);if(e.data?.type==='shell-error')status('Offline file download failed: '+e.data.text)});
  connection();window.addEventListener('online',connection);window.addEventListener('offline',connection);
  $('#prepareOffline').onclick=prepareOffline;$('#verifyOffline').onclick=localSampleTest;
+ $('#removeModel').onclick=async()=>{const model=activeModel();if(!confirm('Remove downloaded '+model.name+' files? Your photos, voice notes and transcripts will stay. The model can be downloaded again.'))return;resetWorker();await caches.delete(model.cache);await readiness();status(model.name+' download removed.');updateControls()};
  $('#openSetup').onclick=()=>openSettings('offline');
  $('#settings').querySelectorAll('[data-settings]').forEach(b=>b.onclick=()=>settingsTab(b.dataset.settings));
  $('#modelChoice').onchange=async()=>{
   selectedModelKey=$('#modelChoice').value;resetWorker();await put('settings',{id:'speech-model',key:selectedModelKey});
+  for(const entry of state.entries)if(entry.transcriptionState==='queued')await put('entries',{...entry,transcriptionModelKey:selectedModelKey});await reload();
   $('#modelDescription').textContent=selectedModelKey==='base'?'Base: about 79 MB of model files (~91 MB with the app). Better recognition is expected, with slower processing.':'Tiny: about 43 MB of model files (~55 MB with the app). Faster processing.';
-  await readiness();status(offlineFilesReady?activeModel().name+' is ready on this phone.':'Download '+activeModel().name+' for offline use.');updateControls();
+  await readiness();status(offlineFilesReady?activeModel().name+' is ready on this phone.':'Download '+activeModel().name+' for offline use.');updateControls();void drainQueue();
  };
  $('#transcribeEntry').onclick=async()=>{
   const e=state.detail;if(!e)return;
@@ -199,7 +203,7 @@ async function initOffline(){
  };
  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('#installApp').hidden=false});
  $('#installApp').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('#installApp').hidden=true}};
- const preferences=await all('settings');selectedModelKey=preferences.find(x=>x.id==='speech-model')?.key||'tiny';if(!MODELS[selectedModelKey])selectedModelKey='tiny';$('#modelChoice').value=selectedModelKey;
+ const preferences=await all('settings');selectedModelKey=preferences.find(x=>x.id==='speech-model')?.key||'tiny';if(!MODELS[selectedModelKey])selectedModelKey='tiny';$('#modelChoice').value=selectedModelKey;$('#modelDescription').textContent=selectedModelKey==='base'?'Base: about 79 MB of model files (~91 MB with the app). Better recognition is expected, with slower processing.':'Tiny: about 43 MB of model files (~55 MB with the app). Faster processing.';
  $('#deviceDiagnostics').textContent='Secure page: '+(isSecureContext?'yes':'no')+' · Browser microphone API: '+(navigator.mediaDevices?.getUserMedia?'available':'unavailable')+' · Models: Whisper English, 8-bit · Runtime: WebAssembly, one thread';
  try{const storage=await navigator.storage?.estimate?.();if(storage)$('#deviceDiagnostics').textContent+=' · Browser storage allowance: '+mb(storage.quota)+' · Used: '+mb(storage.usage);await ensureServiceWorker();const check=await readiness();status(check.ready?'Offline files are present. Run the local sample test to check this phone.':'One-time setup needed: '+mb(activeModel().bytes)+' speech files plus about 12 MB of app/runtime files. Use Wi-Fi.')}catch(e){status('Offline setup unavailable: '+e.message)}
  updateControls();await restoreQueue();

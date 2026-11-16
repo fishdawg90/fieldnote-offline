@@ -44,7 +44,7 @@ async function record(){
   stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,channelCount:1}});
   const mime=['audio/webm;codecs=opus','audio/mp4','audio/ogg;codecs=opus'].find(x=>MediaRecorder.isTypeSupported(x));
   const mr=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
-  const r={area,mr,stream,chunks:[],start:Date.now(),gps:snapshotGPS(),ending:false,timer:null,stoppedAt:null};
+  const r={area,mr,stream,modelKey:selectedModelKey,chunks:[],start:Date.now(),gps:snapshotGPS(),ending:false,timer:null,stoppedAt:null};
   state.recording=r;
   gpsPromise.then(g=>{if(g){r.gps=g;if(state.recording===r)$('#recGPS').textContent='GPS saved · ±'+Math.round(g.accuracy)+' m'}});
   $('#recArea').textContent='Recording in '+areaName(area);
@@ -58,7 +58,7 @@ async function record(){
   mr.onstop=async()=>{
    r.ending=true;r.stoppedAt??=Date.now();clearInterval(r.timer);r.stream.getTracks().forEach(t=>t.stop());
    const blob=new Blob(r.chunks,{type:mr.mimeType||mime||'audio/webm'});
-   const entry={id:uid(),area:r.area,type:'voice',created:r.start,duration:(r.stoppedAt-r.start)/1000,blob,mime:blob.type,text:'',gps:r.gps,locationSource:r.gps?'Device location near start of recording':null,transcriptionStatus:'Audio saved. Offline Whisper transcription has not run yet.'};
+   const entry={id:uid(),area:r.area,type:'voice',created:r.start,duration:(r.stoppedAt-r.start)/1000,blob,mime:blob.type,text:'',gps:r.gps,locationSource:r.gps?'Device location near start of recording':null,transcriptionModelKey:r.modelKey,transcriptionStatus:'Audio saved. Offline Whisper transcription has not run yet.'};
    if(state.recording===r){state.recording=null;if($('#recDialog').open)$('#recDialog').close()}
    await saveCapture(entry);attachLateGPS(entry.id,gpsPromise,r.start,'Device fix near recording start');
   };

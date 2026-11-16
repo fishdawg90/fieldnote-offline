@@ -5,7 +5,7 @@ function updateRecovery(){
  $('#captureRecoveryText').textContent=captureDrafts.size+' capture'+(captureDrafts.size===1?'':'s')+' not saved yet';
 }
 async function saveCapture(entry){
- if(entry.type==='voice'&&$('#transcribe').checked&&!entry.transcriptionState){entry={...entry,transcriptionState:'queued',transcriptionModelKey:selectedModelKey,transcriptionStatus:'Queued for on-device transcription.'}}
+ if(entry.type==='voice'&&$('#transcribe').checked&&!entry.transcriptionState){entry={...entry,transcriptionState:'queued',transcriptionModelKey:entry.transcriptionModelKey||selectedModelKey,transcriptionStatus:'Queued for on-device transcription.'}}
  pendingSaves++;updateRecovery();
  try{
   if(!entry.blob?.size)throw Error('The capture is empty.');
