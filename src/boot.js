@@ -1,0 +1,2 @@
+await init();
+await initOffline();

@@ -5,11 +5,21 @@ A mobile field notebook for named areas (A4, A5, etc.), original photos, audio n
 ## First use on the work phone
 
 1. Open the published GitHub Pages URL in Chrome, not an embedded preview.
-2. While on Wi-Fi, tap **Prepare for offline use**. Keep the page open. The app/runtime is about 12 MB and Whisper files about 43 MB. Completed downloads are reused after interruption.
-3. Tap **Run local sample test**. Expect a transcript including “my fellow Americans”.
+2. While on Wi-Fi, open **Settings → Offline speech** and tap **Download / check model**. Keep the page open. The app/runtime is about 12 MB and Whisper files about 43 MB. Completed downloads are reused after interruption.
+3. Tap **Test sample**. Expect a transcript including “my fellow Americans”.
 4. In Chrome's menu choose **Install app / Add to home screen** (the installation button also appears if the browser offers it).
 5. Turn on airplane mode, close and reopen the app from the home screen, and repeat the sample test.
 6. Make a short 5–15 second voice note in A4. Stop recording, wait for the transcript, check playback, and export it.
+
+## Quick capture interface
+
+The home screen is areas, Photo, Voice and the journal. Settings contains General, Offline speech and Data tabs; the initial setup panel is no longer on the home screen.
+
+- **Photo:** in-app camera; press the shutter once to capture, save and return. There is no accept/review step. Chrome uses ImageCapture where supported, otherwise a video-frame JPEG. Camera fallback and existing-photo imports remain in Settings. A system camera may still have its own review button, which a website cannot remove.
+- **Voice:** recording starts immediately after permission is available. Stop closes the recorder immediately; the original audio is saved and transcription is queued. You can keep taking photos or record another voice note while Whisper works. A small home status and each pending card show progress.
+- Jobs are persisted with their original model choice. Unfinished jobs resume after reopening. Processing is in an app worker while the app is open, not a guaranteed Android background service when the app is closed/locked.
+- Failed media writes retain an in-memory draft and show Retry save; keep the page open until saved. GPS fixes can attach after capture without delaying the journal, with location timestamps retained.
+- Optional **Whisper Base English** is available in Settings → Offline speech. Its quantized files total about 79 MB (~91 MB with the runtime), compared with 43 MB of Tiny model files (~55 MB with runtime). It is expected to improve recognition, with slower processing. Download while online and test on your phone. Tiny remains cached if already downloaded, so keeping both uses extra space.
 
 ## Recording and transcription
 
@@ -49,11 +59,11 @@ npm run build
 
 Serve `dist/` over HTTPS, or localhost for development. This is intentionally an offline web application rather than a single local HTML file: browser microphone permissions, service workers and cached model/runtime assets need a suitable web origin. No production server or database is needed.
 
-`src/journal.js` contains area/media storage, metadata, exports and backup/restore. `src/offline.js` contains download preparation, integrity checks, audio decoding/resampling, inference orchestration and the sample test. `src/whisper-worker.js` performs inference. `src/sw-template.js` supplies the offline app shell and model cache routes. `scripts/build.mjs` vendors the pinned runtime and generates content-versioned shell cache lists and icons.
+`src/capture.js` contains the in-app camera, immediate-save behavior and failed-save recovery. `src/boot.js` starts the app after event handlers are installed. `src/journal.js` contains area/media storage, metadata, exports and backup/restore. `src/offline.js` contains download preparation, integrity checks, audio decoding/resampling, inference orchestration and the sample test. `src/whisper-worker.js` performs inference. `src/sw-template.js` supplies the offline app shell and model cache routes. `scripts/build.mjs` vendors the pinned runtime and generates content-versioned shell cache lists and icons.
 
 ## Limits and phone acceptance check
 
-Desktop browser checks do not establish work-phone compatibility. Employer policies can restrict microphone, location, installation, storage or downloads. Keep the app visible during recording/transcription; Android may suspend background pages. Transcription speed depends on the phone and may be slower than real time. Downloaded model files can be evicted by browser storage pressure. Test in airplane mode before relying on it onsite.
+Desktop browser checks do not establish work-phone compatibility. Base English revision is `95bf40a508535962c6483ead40270b2e32267508`. Employer policies can restrict microphone, location, installation, storage or downloads. Keep the app visible during recording/transcription; Android may suspend background pages. Transcription speed depends on the phone and may be slower than real time. Downloaded model files can be evicted by browser storage pressure. Test in airplane mode before relying on it onsite.
 
 ## Sources and licensing
 

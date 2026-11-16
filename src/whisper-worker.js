@@ -1,5 +1,5 @@
 import { pipeline, env } from './vendor/transformers.web.min.js';
-import { MODEL_ID } from './offline-config.js';
+import { MODELS } from './offline-config.js';
 const base=new URL('./',self.location.href);
 // Inference is strictly local. No Hugging Face/network fallback exists here.
 env.allowRemoteModels=false;
@@ -16,11 +16,13 @@ self.fetch=(input,options)=>{
  if(url.origin!==base.origin||!url.pathname.startsWith(base.pathname))throw Error('External requests are disabled during transcription.');
  return realFetch(input,options);
 };
-let transcriber=null,working=false;
-async function load(){
+let transcriber=null,loadedModel=null,working=false;
+async function load(key){
+ const model=MODELS[key]||MODELS.tiny;
+ if(transcriber&&loadedModel!==model.key){await transcriber.dispose();transcriber=null}
  if(!transcriber){
   postMessage({type:'status',text:'Loading Whisper from this phone’s offline storage…'});
-  transcriber=await pipeline('automatic-speech-recognition',MODEL_ID,{device:'wasm',dtype:'q8',local_files_only:true});
+  transcriber=await pipeline('automatic-speech-recognition',model.id,{device:'wasm',dtype:'q8',local_files_only:true});loadedModel=model.key;
  }
  return transcriber;
 }
@@ -28,7 +30,7 @@ self.onmessage=async({data})=>{
  if(working){postMessage({type:'error',id:data.id,message:'Whisper is already processing a clip.'});return}
  working=true;
  try{
-  const model=await load();
+  const model=await load(data.modelKey);
   if(data.type==='load'){postMessage({type:'ready',id:data.id});return}
   postMessage({type:'status',text:'Transcribing locally. Keep this screen open…'});
   const output=await model(data.audio,{chunk_length_s:20,stride_length_s:3,return_timestamps:false,max_new_tokens:160});

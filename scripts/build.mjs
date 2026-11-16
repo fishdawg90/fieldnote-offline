@@ -2,11 +2,11 @@ import {mkdir,rm,readFile,writeFile,copyFile,readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {deflateSync} from 'node:zlib';
 import path from 'node:path';
-import {MODEL_CACHE} from '../src/offline-config.js';
+import {MODEL_CACHE,MODELS} from '../src/offline-config.js';
 const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'dist');
 await rm(out,{recursive:true,force:true});await mkdir(path.join(out,'vendor'),{recursive:true});
 for(const file of ['index.html','style.css','offline-config.js','whisper-worker.js','manifest.webmanifest','icon.svg','sample.wav'])await copyFile(path.join(root,'src',file),path.join(out,file));
-const app=await readFile(path.join(root,'src/offline.js'),'utf8')+'\n'+await readFile(path.join(root,'src/journal.js'),'utf8');
+const app=await readFile(path.join(root,'src/offline.js'),'utf8')+'\n'+await readFile(path.join(root,'src/journal.js'),'utf8')+'\n'+await readFile(path.join(root,'src/capture.js'),'utf8')+'\n'+await readFile(path.join(root,'src/boot.js'),'utf8');
 await writeFile(path.join(out,'app.js'),app);
 // Use the WASM-only runtime: both external imports share its Tensor implementation.
 let transformer=await readFile(path.join(root,'node_modules/@huggingface/transformers/dist/transformers.web.min.js'),'utf8');
@@ -37,9 +37,11 @@ for(const size of [192,512]){
 }
 await writeFile(path.join(out,'.nojekyll'),'');
 async function walk(dir){let files=[];for(const e of await readdir(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())files.push(...await walk(p));else files.push(path.relative(out,p).split(path.sep).join('/'))}return files.sort()}
-const files=(await walk(out)).filter(file=>!file.startsWith('.')),hash=createHash('sha256');for(const f of files)hash.update(f).update(await readFile(path.join(out,f)));const version=hash.digest('hex').slice(0,16),cacheName='fieldnote-shell-'+version;
-const manifest={version,cacheName,files:[...files,'offline-assets.json','sw-config.js']};
+const swSource=await readFile(path.join(root,'src/sw-template.js'));
+const files=(await walk(out)).filter(file=>!file.startsWith('.')),hash=createHash('sha256').update(swSource);for(const f of files)hash.update(f).update(await readFile(path.join(out,f)));const version=hash.digest('hex').slice(0,16),cacheName='fieldnote-shell-'+version;
+const runtimeCache='fieldnote-runtime-transformers-3.8.1-wasm-1';
+const manifest={version,cacheName,runtimeCache,files:[...files,'offline-assets.json','sw-config.js']};
 await writeFile(path.join(out,'offline-assets.json'),JSON.stringify(manifest));
-await writeFile(path.join(out,'sw-config.js'),'self.FIELDNOTE_CACHE='+JSON.stringify({CACHE:cacheName,FILES:manifest.files,MODEL_CACHE})+';\n');
+await writeFile(path.join(out,'sw-config.js'),'self.FIELDNOTE_CACHE='+JSON.stringify({CACHE:cacheName,RUNTIME_CACHE:runtimeCache,FILES:manifest.files,MODEL_CACHE,MODEL_ROUTES:Object.fromEntries(Object.values(MODELS).map(m=>['models/'+m.id+'/',m.cache]))})+';\n');
 await copyFile(path.join(root,'src/sw-template.js'),path.join(out,'sw.js'));
 console.log('Built Fieldnote Offline '+version+' · '+manifest.files.length+' cached files.');
