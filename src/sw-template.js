@@ -17,7 +17,22 @@ self.addEventListener('fetch',event=>{
  const relative=url.pathname.slice(scope.pathname.length);
  if(relative.startsWith('models/')){
   // Model inference never downloads or calls an external service.
-  event.respondWith(caches.open(MODEL_CACHE).then(c=>c.match(request)).then(r=>r||new Response('Model asset is not prepared on this phone.',{status:404})));return;
+  event.respondWith((async()=>{
+   const cache=await caches.open(MODEL_CACHE),response=await cache.match(request);
+   if(!response)return new Response('Model asset is not prepared on this phone.',{status:404});
+   const chunks=Number(response.headers.get('x-fieldnote-chunks')||0);if(!chunks)return response;
+   let index=0,reader=null;
+   const stream=new ReadableStream({async pull(controller){
+    try{
+     while(true){
+      if(reader){const next=await reader.read();if(!next.done){controller.enqueue(next.value);return}reader=null}
+      if(index>=chunks){controller.close();return}
+      const part=await cache.match(request.url+'?chunk='+index++);if(!part)throw Error('Offline model chunk is missing. Run setup again.');reader=part.body.getReader();
+     }
+    }catch(error){controller.error(error)}
+   },cancel(){return reader?.cancel()}});
+   return new Response(stream,{headers:{'Content-Type':'application/octet-stream','Content-Length':response.headers.get('x-fieldnote-size')}});
+  })());return;
  }
  event.respondWith((async()=>{
   const cache=await caches.open(CACHE),cached=await cache.match(request,{ignoreSearch:true});

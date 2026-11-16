@@ -20,7 +20,7 @@ async function readiness(){
  const shell=await caches.open(manifest.cacheName),model=await caches.open(MODEL_CACHE);
  const missing=[];
  for(const file of manifest.files)if(!await shell.match(new URL(file,appBase).href))missing.push(file);
- for(const f of MODEL_FILES){const r=await model.match(modelURL(appBase,f.path));if(!r||r.headers.get('x-fieldnote-size')!==String(f.size)||r.headers.get('x-fieldnote-revision')!==MODEL_REVISION)missing.push(f.path)}
+ for(const f of MODEL_FILES){const key=modelURL(appBase,f.path),r=await model.match(key);if(!r||r.headers.get('x-fieldnote-size')!==String(f.size)||r.headers.get('x-fieldnote-revision')!==MODEL_REVISION){missing.push(f.path);continue}const chunks=Number(r.headers.get('x-fieldnote-chunks')||0);for(let i=0;i<chunks;i++)if(!await model.match(key+'?chunk='+i)){missing.push(f.path+' chunk '+i);break}}
  offlineFilesReady=missing.length===0;
  $('#verifyOffline').disabled=!offlineFilesReady||setupBusy||!!transcriptionBusy;
  return{ready:offlineFilesReady,missing,manifest};
@@ -38,10 +38,13 @@ async function prepareOffline(){
  setupBusy=true;updateControls();$('#setupProgress').hidden=false;
  try{
   await ensureServiceWorker();
+  await navigator.storage?.persist?.().catch(()=>false);
   const cache=await caches.open(MODEL_CACHE);let done=0;
   for(const file of MODEL_FILES){
    const key=modelURL(appBase,file.path),old=await cache.match(key);
-   if(old&&old.headers.get('x-fieldnote-size')===String(file.size)&&old.headers.get('x-fieldnote-revision')===MODEL_REVISION){done+=file.size;continue}
+   let complete=old&&old.headers.get('x-fieldnote-size')===String(file.size)&&old.headers.get('x-fieldnote-revision')===MODEL_REVISION;
+   if(complete)for(let i=0;i<Number(old.headers.get('x-fieldnote-chunks')||0);i++)if(!await cache.match(key+'?chunk='+i)){complete=false;break}
+   if(complete){done+=file.size;continue}
    status('Downloading Whisper · '+mb(done)+' / '+mb(modelBytes)+' · '+file.path.split('/').pop());
    const response=await fetch(downloadURL(file.path),{credentials:'omit',referrerPolicy:'no-referrer'});
    if(!response.ok)throw Error('Model download failed ('+response.status+'). Check internet access to huggingface.co and retry.');
@@ -51,7 +54,14 @@ async function prepareOffline(){
    if(bytes.length!==file.size)throw Error('Incomplete download for '+file.path+'. Retry setup.');
    const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
    if(file.sha256&&digest!==file.sha256)throw Error('Integrity check failed for '+file.path+'. Retry setup.');
-   await cache.put(key,new Response(bytes,{headers:{'Content-Type':file.path.endsWith('.json')?'application/json':'application/octet-stream','x-fieldnote-size':String(file.size),'x-fieldnote-revision':MODEL_REVISION,'x-fieldnote-sha256':digest}}));
+   const headers={'Content-Type':file.path.endsWith('.json')?'application/json':'application/octet-stream','x-fieldnote-size':String(file.size),'x-fieldnote-revision':MODEL_REVISION,'x-fieldnote-sha256':digest};
+   const chunkSize=4*1024*1024;
+   if(bytes.length>chunkSize){
+    const chunks=Math.ceil(bytes.length/chunkSize);
+    for(let i=0;i<chunks;i++)await cache.put(key+'?chunk='+i,new Response(bytes.slice(i*chunkSize,(i+1)*chunkSize)));
+    headers['x-fieldnote-chunks']=String(chunks);
+    await cache.put(key,new Response('',{headers}));
+   }else await cache.put(key,new Response(bytes,{headers}));
    done+=file.size;$('#setupProgress').value=done/modelBytes*100;
   }
   const check=await readiness();if(!check.ready)throw Error('Some offline files are missing: '+check.missing.join(', '));
@@ -60,7 +70,7 @@ async function prepareOffline(){
   status('Offline files ready. Run the local sample test, then repeat it in airplane mode.');
   const persistent=await navigator.storage?.persist?.().catch(()=>false);
   toast(persistent?'Offline files saved with persistent storage.':'Offline files saved. Keep backups; the browser may reclaim storage.');
- }catch(e){status('Setup incomplete: '+e.message);toast('Setup incomplete — completed downloads are kept for retry.');}
+ }catch(e){console.error('Offline preparation:',e);const estimate=await navigator.storage?.estimate?.().catch(()=>null);status('Setup incomplete: '+e.message+(estimate?' · Storage used '+mb(estimate.usage)+' of '+mb(estimate.quota)+' allowed by this browser.':''));toast('Setup incomplete — completed downloads are kept for retry.');}
  finally{setupBusy=false;await readiness().catch(()=>{});updateControls();}
 }
 function resetWorker(){whisperWorker?.terminate();whisperWorker=null;workerCall=null}
@@ -140,6 +150,6 @@ async function initOffline(){
  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('#installApp').hidden=false});
  $('#installApp').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('#installApp').hidden=true}};
  $('#deviceDiagnostics').textContent='Secure page: '+(isSecureContext?'yes':'no')+' · Browser microphone API: '+(navigator.mediaDevices?.getUserMedia?'available':'unavailable')+' · Model: Whisper Tiny English, 8-bit · Runtime: WebAssembly, one thread';
- try{await ensureServiceWorker();const check=await readiness();status(check.ready?'Offline files are present. Run the local sample test to check this phone.':'One-time setup needed: '+mb(modelBytes)+' speech files plus about 22 MB of app/runtime files. Use Wi-Fi.')}catch(e){status('Offline setup unavailable: '+e.message)}
+ try{const storage=await navigator.storage?.estimate?.();if(storage)$('#deviceDiagnostics').textContent+=' · Browser storage allowance: '+mb(storage.quota)+' · Used: '+mb(storage.usage);await ensureServiceWorker();const check=await readiness();status(check.ready?'Offline files are present. Run the local sample test to check this phone.':'One-time setup needed: '+mb(modelBytes)+' speech files plus about 22 MB of app/runtime files. Use Wi-Fi.')}catch(e){status('Offline setup unavailable: '+e.message)}
  updateControls();
 }
