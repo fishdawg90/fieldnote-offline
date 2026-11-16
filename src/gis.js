@@ -1,3 +1,4 @@
+import {assetDetails,assetValue,presentAssetValue,overallBand} from './asset-data.js';
 let gisMap=null,gisLayers=[],gisGPS=null,gisRecord=null,gisWorker=null,gisPending=null,gisFile=null,gisScan=null,gisBusy=false,gisTimer=null,gisLibraries=null,gisMode='geographic',gisRun=0;
 const GIS_CACHE='fieldnote-gis-runtime-2.8.1';
 const gisStatus=text=>{$('#gisStatus').textContent=text};
@@ -74,7 +75,7 @@ async function loadGISDataset(){
   const offline=await prepareGIS(true,run);if(run!==gisRun)return;const result=await gisCall('load',{key:$('#gisDataset').value,sourceCRS:$('#gisSourceCRS').value.trim()});
   if(run!==gisRun)return;
   const record={id:'layout',sourceName:gisFile.name,imported:Date.now(),archive:gisScan,...result.result};gisRecord=record;gisMode=record.viewMode;
-  $('#gisSourceName').textContent=record.sourceName;gisDiagnostics();await drawGIS(true);
+  $('#gisSourceName').textContent=record.sourceName;gisDiagnostics();await showAppView('journal');await drawGIS(true);
   try{await put('gis',record);gisStatus('Loaded '+record.layers.length+' layers · '+record.featureCount.toLocaleString()+' features. Saved on this phone.'+(offline?'':' GIS reader needs internet for another import until offline tools are prepared.'))}catch(error){gisStatus('Layout displayed but not saved: '+error.message+'. Keep the ZIP to reimport.')}
   $('#gisWarnings').textContent=record.warnings.join('\n');$('#gisWarnings').hidden=!record.warnings.length;
   // Release the GDAL heap after import; this does not affect the rendered map or stored geometry.
@@ -88,26 +89,94 @@ function gisPopup(feature,layerName){
  if(!entries.length)box.append(document.createTextNode('No attributes.'));return box;
 }
 const GIS_COLOURS=['#27715c','#407ba9','#bd7d28','#9972aa','#ba5c55','#5a8d88','#7c8c3b','#585e9b'];
+const RAG_COLOURS={grey:'#89918b',red:'#ba655f',amber:'#bc9647',green:'#679477'};
+let gisSelectedShape=null,gisSelectedAsset=null,gisLabelCanvas=null,gisLabelFrame=0,gisImagery=null,gisImageryKey='',gisSatelliteOn=false;
+function gisShapeStyle(feature,selected=false){
+ const band=overallBand(assetValue(feature.properties,'aosOverallRAG')),colour=RAG_COLOURS[band];
+ return {color:colour,weight:selected?3:1.5,fillColor:colour,fillOpacity:selected?.34:.16,opacity:selected?1:.8};
+}
+function selectGISAsset(feature,shape,layerName){
+ if(gisSelectedShape)gisSelectedShape.setStyle(gisShapeStyle(gisSelectedShape.feature));
+ gisSelectedShape=shape;gisSelectedAsset=assetDetails(feature.properties);shape.setStyle(gisShapeStyle(feature,true));
+ const asset=gisSelectedAsset,box=$('#featurePanel');box.replaceChildren();
+ const heading=document.createElement('div');heading.className='feature-heading';
+ const title=document.createElement('strong');title.textContent=asset.reference||layerName;heading.append(title);
+ if(asset.reference){const use=document.createElement('button');use.className='textbtn';use.textContent='Work in '+asset.reference;use.onclick=()=>useGISArea(asset.reference);heading.append(use)}
+ const close=document.createElement('button');close.className='textbtn';close.textContent='✕';close.setAttribute('aria-label','Clear selected shape');close.onclick=clearGISAsset;heading.append(close);box.append(heading);
+ const details=document.createElement('div');details.className='asset-fields';
+ for(const field of asset.fields){const row=document.createElement('div'),label=document.createElement('span'),value=document.createElement('span');label.className='asset-field-label';label.textContent=field.label;value.textContent=String(field.value);row.append(label,value);details.append(row)}
+ if(!asset.fields.length){const empty=document.createElement('small');empty.textContent='No listed asset details.';details.append(empty)}
+ box.append(details);
+ if(asset.scores.length){const scores=document.createElement('div');scores.className='asset-scores';scores.setAttribute('aria-label','Condition ratings: 0 grey, 1 red, 2 to 3 amber, 4 to 5 green');
+ for(const score of asset.scores){const cell=document.createElement('div');cell.className='asset-score rag-'+score.band;cell.title=score.label+': '+score.value+' ('+score.band+')';const label=document.createElement('span'),value=document.createElement('b');label.textContent=score.label;value.textContent=String(score.value);cell.append(label,value);scores.append(cell)}box.append(scores)}
+ requestAnimationFrame(()=>gisMap?.invalidateSize());
+}
+function clearGISAsset(){
+ if(gisSelectedShape)gisSelectedShape.setStyle(gisShapeStyle(gisSelectedShape.feature));
+ gisSelectedShape=null;gisSelectedAsset=null;$('#featurePanel').innerHTML='<div class="feature-empty">Tap an airfield shape to see its details.</div>';requestAnimationFrame(()=>gisMap?.invalidateSize());
+}
+async function useGISArea(name){
+ if(!state.inspection){toast('Name an inspection first.');return editInspection()}
+ const title=String(name).trim().slice(0,160);if(!title)return;
+ try{let area=currentScope().areas.find(x=>x.name.toLowerCase()===title.toLowerCase());
+ if(!area){area={id:uid(),name:title,inspectionId:state.inspection};await put('areas',area);state.areas.push(area)}
+ state.selected=area.id;await rememberInspection();render();toast('Working in '+title);
+ }catch(error){fail(error)}
+}
+function queueGISLabels(){cancelAnimationFrame(gisLabelFrame);gisLabelFrame=requestAnimationFrame(drawGISLabels)}
+function drawGISLabels(){
+ if(!gisMap||!gisLabelCanvas||$('#journalPanel').hidden)return;
+ const size=gisMap.getSize(),dpr=Math.min(window.devicePixelRatio||1,2),canvas=gisLabelCanvas;
+ canvas.width=Math.round(size.x*dpr);canvas.height=Math.round(size.y*dpr);canvas.style.width=size.x+'px';canvas.style.height=size.y+'px';
+ const context=canvas.getContext('2d');context.scale(dpr,dpr);const zoom=gisMap.getZoom(),fontSize=Math.max(10,Math.min(16,10+(zoom-14)*.8));
+ context.font='600 '+fontSize+'px system-ui';context.textAlign='center';context.textBaseline='middle';context.lineJoin='round';context.lineWidth=3;
+ const occupied=[],view=gisMap.getBounds();let count=0;
+ for(const group of gisLayers){if(!group||!gisMap.hasLayer(group))continue;
+  for(const shape of group.getLayers()){
+   const rawReference=assetValue(shape.feature?.properties,'ANNEX_A6_LABELS');if(!presentAssetValue(rawReference))continue;const reference=String(rawReference);
+   const bounds=shape.getBounds?.(),centre=bounds?bounds.getCenter():shape.getLatLng?.();if(!centre||!view.contains(centre))continue;
+   if(bounds){const a=gisMap.latLngToContainerPoint(bounds.getNorthWest()),b=gisMap.latLngToContainerPoint(bounds.getSouthEast());if(Math.max(Math.abs(b.x-a.x),Math.abs(b.y-a.y))<fontSize*2)continue}
+   else if(gisMode==='geographic'&&zoom<14)continue;
+   const point=gisMap.latLngToContainerPoint(centre),width=context.measureText(reference.slice(0,80)).width+8,height=fontSize+7,rect={x:point.x-width/2,y:point.y-height/2,w:width,h:height};
+   if(occupied.some(r=>r.x<rect.x+rect.w&&r.x+r.w>rect.x&&r.y<rect.y+rect.h&&r.y+r.h>rect.y))continue;
+   occupied.push(rect);context.strokeStyle='#ffffffdd';context.fillStyle='#243c32';context.strokeText(reference.slice(0,80),point.x,point.y);context.fillText(reference.slice(0,80),point.x,point.y);
+   if(++count>=400)return;
+  }
+ }
+}
 async function drawGIS(fit=false){
  await gisLibrariesReady();
- if(gisMap){gisMap.remove();gisMap=null}gisLayers=[];gisGPS=null;
+ if(gisMap){gisMap.remove();gisMap=null}gisLayers=[];gisGPS=null;gisImagery=null;gisSelectedShape=null;gisSelectedAsset=null;
  const L=window.L,geo=gisMode==='geographic';
  gisMap=L.map('gisMap',{crs:geo?L.CRS.EPSG3857:L.CRS.Simple,preferCanvas:true,minZoom:geo?1:-25,maxZoom:geo?24:15,attributionControl:true,zoomControl:true});
- gisMap.attributionControl.setPrefix('Leaflet · local GIS');
+ gisMap.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
  L.control.scale({imperial:false}).addTo(gisMap);
  const layers=gisRecord?.layers||[];
- $('#gisViewMode').value=gisMode;$('#gisLocate').disabled=!geo||!layers.length;
- $('#gisLayerList').innerHTML=layers.map((layer,i)=>`<label class="gis-layer"><input type="checkbox" data-layer="${i}" ${layer.visible!==false?'checked':''} ${layer.mode!==gisMode?'disabled':''}><span class="gis-swatch" style="background:${GIS_COLOURS[i%GIS_COLOURS.length]}"></span><span>${esc(layer.name)}<small>${layer.features.toLocaleString()} features${layer.mode!==gisMode?' · other coordinate view':''}</small></span></label>`).join('');
+ $('#gisViewMode').value=gisMode;$('#gisLocate').disabled=!geo||!layers.length;$('#gisSatellite').disabled=!geo;
+ $('#gisLayerList').innerHTML=layers.map((layer,i)=>'<label class="gis-layer"><input type="checkbox" data-layer="'+i+'" '+(layer.visible!==false?'checked':'')+' '+(layer.mode!==gisMode?'disabled':'')+'><span class="gis-swatch" style="background:'+GIS_COLOURS[i%GIS_COLOURS.length]+'"></span><span>'+esc(layer.name)+'<small>'+layer.features.toLocaleString()+' features'+(layer.mode!==gisMode?' · other coordinate view':'')+'</small></span></label>').join('');
  $('#gisLayerCount').textContent='Layers ('+layers.length+')';
  for(let i=0;i<layers.length;i++){
   const item=layers[i];if(item.mode!==gisMode){gisLayers[i]=null;continue}
-  const colour=GIS_COLOURS[i%GIS_COLOURS.length];
-  const group=L.geoJSON(item.geojson,{style:{color:colour,weight:2,fillColor:colour,fillOpacity:.18},pointToLayer:(_,latlng)=>L.circleMarker(latlng,{radius:5,color:colour,fillOpacity:.8,weight:1}),onEachFeature:(feature,layer)=>layer.bindPopup(()=>gisPopup(feature,item.name))});
+  const group=L.geoJSON(item.geojson,{style:feature=>gisShapeStyle(feature),pointToLayer:(feature,latlng)=>L.circleMarker(latlng,{radius:5,...gisShapeStyle(feature)}),onEachFeature:(feature,shape)=>shape.on('click',()=>selectGISAsset(feature,shape,item.name))});
   gisLayers[i]=group;if(item.visible!==false)group.addTo(gisMap);
  }
  gisMap.setView([0,0],geo?2:0);if(fit)fitGIS();
- $('#gisMapNote').textContent=geo?'GIS geometry only · no online basemap':'Local XY coordinates · GPS alignment unavailable';
- $('#gisMap').classList.toggle('gis-local',!geo);setTimeout(()=>gisMap?.invalidateSize(),0);
+ $('#gisMapNote').textContent=geo?(layers.length?'Tap a shape · labels appear as you zoom':'Load your airfield in the GIS tab'):'Local XY · GPS and satellite unavailable';
+ $('#gisMap').classList.toggle('gis-local',!geo);
+ gisLabelCanvas=document.createElement('canvas');gisLabelCanvas.className='gis-labels';gisLabelCanvas.setAttribute('aria-hidden','true');gisMap.getContainer().append(gisLabelCanvas);
+ gisMap.on('move zoom resize layeradd layerremove',queueGISLabels);
+ clearGISAsset();syncGISImagery();setTimeout(()=>{gisMap?.invalidateSize();queueGISLabels()},0);
+}
+function syncGISImagery(){
+ if(gisImagery){gisMap?.removeLayer(gisImagery);gisImagery=null}
+ const enabled=gisSatelliteOn&&gisMode==='geographic'&&!!gisImageryKey&&navigator.onLine;
+ $('#gisSatellite').setAttribute('aria-pressed',String(enabled));$('#gisSatellite').classList.toggle('active',enabled);
+ if(!enabled)return;
+ gisImagery=window.L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token='+encodeURIComponent(gisImageryKey),{
+  maxNativeZoom:19,maxZoom:24,referrerPolicy:'strict-origin-when-cross-origin',
+  attribution:'Tiles © Esri — Sources: Esri, DigitalGlobe, GeoEye, i-cubed, USDA FSA, USGS, AEX, Getmapping, Aerogrid, IGN, IGP, swisstopo, and the GIS User Community'
+ }).addTo(gisMap);
+ let warned=false;gisImagery.on('tileerror',()=>{if(warned)return;warned=true;gisSatelliteOn=false;syncGISImagery();toast('Satellite unavailable. Check the imagery key, basemap access and network in GIS setup.')});
 }
 function fitGIS(){
  if(!gisMap)return;const L=window.L,bounds=L.latLngBounds([]);
@@ -122,17 +191,57 @@ async function locateGIS(){
  gisMap.panTo([gps.latitude,gps.longitude]);gisGPS.openPopup();
 }
 async function showAppView(view){
+ if(!$('#recordsPanel').hidden)closeRecordsView();
  $('#journalPanel').hidden=view!=='journal';$('#gisPanel').hidden=view!=='gis';
- document.querySelectorAll('[data-app-view]').forEach(b=>{const active=b.dataset.appView===view;b.classList.toggle('active',active);b.setAttribute('aria-pressed',active)});
- if(view==='gis'){
-  try{
-   if(!gisRecord){gisRecord=await tx('gis','readonly',store=>store.get('layout'));if(gisRecord){gisMode=gisRecord.viewMode||'geographic';$('#gisSourceName').textContent=gisRecord.sourceName;$('#gisWarnings').textContent=(gisRecord.warnings||[]).join('\n');$('#gisWarnings').hidden=!gisRecord.warnings?.length;gisDiagnostics()}}
-   if(!gisMap){await drawGIS(!!gisRecord);if(gisRecord)gisStatus('Saved layout · '+gisRecord.layers.length+' layers · '+gisRecord.featureCount.toLocaleString()+' features.')}
-   gisMap.invalidateSize();
-  }catch(error){gisStatus(error.message)}
- }
+ document.querySelectorAll('[data-app-view]').forEach(button=>{const active=button.dataset.appView===view;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});
+ if(view!=='journal')return;
+ try{
+  if(!gisRecord){gisRecord=await tx('gis','readonly',store=>store.get('layout'));if(gisRecord){gisMode=gisRecord.viewMode||'geographic';$('#gisSourceName').textContent=gisRecord.sourceName;$('#gisWarnings').textContent=(gisRecord.warnings||[]).join('\n');$('#gisWarnings').hidden=!gisRecord.warnings?.length;gisDiagnostics();gisStatus('Saved layout · '+gisRecord.layers.length+' layers · '+gisRecord.featureCount.toLocaleString()+' features.')}}
+  if(!gisMap)await drawGIS(!!gisRecord);gisMap.invalidateSize();queueGISLabels();
+ }catch(error){gisStatus(error.message);toast(error.message)}
+}
+function renderCaptureDock(){
+ const scope=currentScope(),selected=state.areas.find(x=>x.id===state.selected);
+ $('#currentArea').textContent=selected?selected.name:'＋ Area';$('#currentArea').title=selected?'Working area: '+selected.name:'Choose or create a working area';
+ $('#recordsCount').textContent=scope.entries.filter(e=>!state.selected||e.area===state.selected).length;
+ $('#editWorkingArea').hidden=!state.selected;
+}
+function showRecordsView(){
+ if(!$('#recordsPanel').hidden)return;
+ $('#recordsPanel').hidden=false;document.body.classList.add('records-open');render();
+ history.pushState({...history.state,fieldnoteRecords:true},'');$('#closeRecords').focus();
+}
+function hideRecordsView(){
+ $('#recordsPanel').hidden=true;document.body.classList.remove('records-open');gisMap?.invalidateSize();queueGISLabels();
+}
+function closeRecordsView(){
+ if(history.state?.fieldnoteRecords)history.back();else hideRecordsView();
+}
+function initCaptureLayout(){
+ $('#currentArea').onclick=()=>{if(!state.inspection)return editInspection();$('#areaPicker').showModal()};
+ $('#editWorkingArea').onclick=()=>{$('#areaPicker').close();areaEdit(true)};
+ $('#areas').addEventListener('click',event=>{if(event.target.closest('[data-area]'))$('#areaPicker').close()});
+ $('#openRecords').onclick=showRecordsView;$('#closeRecords').onclick=closeRecordsView;
+ window.addEventListener('popstate',()=>{if(!history.state?.fieldnoteRecords)hideRecordsView();else{$('#recordsPanel').hidden=false;document.body.classList.add('records-open')}});
+ // Track nested details so Android Back closes the detail before leaving Records.
+ let detailHasHistory=false,closingFromHistory=false;
+ const observer=new MutationObserver(()=>{
+  if($('#detail').open&&!detailHasHistory){history.pushState({...history.state,fieldnoteDetail:true},'');detailHasHistory=true}
+  else if(!$('#detail').open&&detailHasHistory){detailHasHistory=false;if(!closingFromHistory&&history.state?.fieldnoteDetail)history.back();closingFromHistory=false}
+ });
+ observer.observe($('#detail'),{attributes:true,attributeFilter:['open']});
+ window.addEventListener('popstate',()=>{if($('#detail').open&&!history.state?.fieldnoteDetail){closingFromHistory=true;$('#detail').close()}});
+ if(history.state?.fieldnoteRecords){$('#recordsPanel').hidden=false;document.body.classList.add('records-open')}
+ renderCaptureDock();
 }
 function initGIS(){
+ initCaptureLayout();
+ void tx('settings','readonly',store=>store.get('gis-imagery')).then(setting=>{gisImageryKey=setting?.key||'';$('#gisImageryKey').value=gisImageryKey}).catch(fail);
+ $('#gisSatellite').onclick=()=>{if(gisMode!=='geographic')return;if(!navigator.onLine)return toast('Satellite needs internet. The airfield layout remains available offline.');if(!gisImageryKey){void showAppView('gis');$('#gisImageryKey').focus();return toast('Add an ArcGIS basemap key in GIS setup first.')}gisSatelliteOn=!gisSatelliteOn;syncGISImagery()};
+ $('#gisSaveImagery').onclick=async()=>{try{const key=$('#gisImageryKey').value.trim();await put('settings',{id:'gis-imagery',key});gisImageryKey=key;$('#gisImageryStatus').textContent=key?'Saved on this phone. Enable Satellite in Capture.':'No key saved.';if(gisSatelliteOn)syncGISImagery()}catch(error){fail(error)}};
+ $('#gisClearImagery').onclick=async()=>{try{await put('settings',{id:'gis-imagery',key:''});gisImageryKey='';$('#gisImageryKey').value='';gisSatelliteOn=false;syncGISImagery();$('#gisImageryStatus').textContent='Imagery key removed.'}catch(error){fail(error)}};
+ window.addEventListener('offline',()=>syncGISImagery());
+ window.addEventListener('online',()=>{if(gisSatelliteOn)syncGISImagery()});
  document.querySelectorAll('[data-app-view]').forEach(b=>b.onclick=()=>showAppView(b.dataset.appView));
  $('#gisLoad').onclick=()=>$('#gisFile').click();$('#gisFile').onchange=async()=>{const file=$('#gisFile').files[0];if(file)await scanGIS(file);$('#gisFile').value=''};
  $('#gisDemo').onclick=async()=>{try{const response=await fetch(new URL('./gis-demo.gdb.zip',appBase));if(!response.ok)throw Error('Demo unavailable; reopen online.');await scanGIS(new File([await response.blob()],'Synthetic-airfield.gdb.zip',{type:'application/zip'}))}catch(error){gisStatus(error.message)}};
@@ -140,7 +249,7 @@ function initGIS(){
  $('#gisOpenDataset').onclick=async()=>{if(!gisFile)return;gisSetBusy(true);try{const key=$('#gisDataset').value;const bytes=await gisFile.arrayBuffer();await gisCall('scan',{bytes},[bytes]);$('#gisDataset').value=key;await loadGISDataset()}catch(error){gisStatus(error.message)}finally{gisSetBusy(false)}};
  $('#gisCancel').onclick=()=>{resetGISWorker();gisSetBusy(false);gisStatus('Import cancelled. The previous saved layout is unchanged.')};
  $('#gisFit').onclick=fitGIS;$('#gisLocate').onclick=locateGIS;
- $('#gisViewMode').onchange=async()=>{gisMode=$('#gisViewMode').value;await drawGIS(true)};
- $('#gisLayerList').onchange=e=>{const index=Number(e.target.dataset.layer);if(!Number.isInteger(index)||!gisLayers[index])return;gisRecord.layers[index].visible=e.target.checked;if(e.target.checked)gisLayers[index].addTo(gisMap);else gisMap.removeLayer(gisLayers[index]);void put('gis',gisRecord).catch(()=>{})};
+ $('#gisViewMode').onchange=async()=>{gisMode=$('#gisViewMode').value;await showAppView('journal');await drawGIS(true)};
+ $('#gisLayerList').onchange=e=>{const index=Number(e.target.dataset.layer);if(!Number.isInteger(index)||!gisLayers[index])return;gisRecord.layers[index].visible=e.target.checked;if(e.target.checked)gisLayers[index].addTo(gisMap);else gisMap.removeLayer(gisLayers[index]);queueGISLabels();void put('gis',gisRecord).catch(()=>{})};
  $('#gisReport').onclick=()=>download(new Blob([$('#gisDiagnostics').textContent],{type:'application/json'}),'Fieldnote-GIS-diagnostic.json');
 }
