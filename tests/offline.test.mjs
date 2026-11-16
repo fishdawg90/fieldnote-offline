@@ -31,7 +31,7 @@ test('Capture commits queued audio before starting background inference; capture
  const source=await readFile(new URL('../src/capture.js',import.meta.url),'utf8');
  const fn=source.slice(source.indexOf('async function saveCapture('),source.indexOf("$('#retryCaptures')"));
  const order=[],stored=[];
- const context={pendingSaves:0,captureDrafts:new Map(),updateRecovery(){},updateControls(){},$:()=>({checked:true}),selectedModelKey:'tiny',async put(_,value){order.push('save');stored.push(value)},async reload(){order.push('render')},toast(){},drainQueue(){order.push('transcribe')},fail:assert.fail};
+ const context={state:{areas:[]},inspectionForEntry:()=>null,pendingSaves:0,captureDrafts:new Map(),updateRecovery(){},updateControls(){},$:()=>({checked:true}),selectedModelKey:'tiny',async put(_,value){order.push('save');stored.push(value)},async reload(){order.push('render')},toast(){},drainQueue(){order.push('transcribe')},fail:assert.fail};
  vm.runInNewContext(fn+';this.save=saveCapture;',context);
  await context.save({id:'test',type:'voice',blob:new Blob(['audio'])});
  assert.deepEqual(order,['save','render','transcribe']);assert.equal(stored[0].transcriptionState,'queued');assert.equal(stored[0].transcriptionModelKey,'tiny');assert.ok(!fn.includes('showDetail'));

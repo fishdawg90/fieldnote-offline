@@ -11,6 +11,14 @@ A mobile field notebook for named areas (A4, A5, etc.), original photos, audio n
 5. Turn on airplane mode, close and reopen the app from the home screen, and repeat the sample test.
 6. Make a short 5–15 second voice note in A4. Stop recording, wait for the transcript, check playback, and export it.
 
+## Inspections
+
+Use the small inspection selector above the area buttons to create, rename and switch between named inspections. Every new inspection starts with no areas; create only the areas you need. Area names can repeat in different inspections. The selected inspection and last area are remembered on this phone.
+
+Existing records migrate into **Previous inspection** without changing their area/media IDs or audio/photo bytes. The original untouched A4/A5 starter pair is removed only when it is the entire area list and has no captures. Other existing areas are retained. No new A4 or A5 defaults are created.
+
+**Export inspection** exports only the currently selected inspection and adds its name to the CSV, media metadata and ZIP filename. The ZIP includes an inspection manifest. **Full backup** includes every inspection, area and record (backup format v2). Restore accepts both v2 and older v1 backups; older ungrouped areas receive a restored-inspection group, while matching existing area IDs keep their inspection membership.
+
 ## Quick capture interface
 
 The home screen is areas, Photo, Voice and the journal. Settings contains General, Offline speech and Data tabs; the initial setup panel is no longer on the home screen.

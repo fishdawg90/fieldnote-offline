@@ -36,6 +36,7 @@ function updateActivity(){
  $('#setupHint').classList.toggle('hidden',offlineFilesReady||setupBusy);
 }
 function updateControls(){
+ $('#exportZip').disabled=!state.inspection;
  const pending=state.entries.some(e=>['queued','processing'].includes(e.transcriptionState));
  $('#prepareOffline').disabled=setupBusy||!!transcriptionBusy||!!state.recording;
  $('#verifyOffline').disabled=setupBusy||!!transcriptionBusy||pending||!offlineFilesReady||!!state.recording;

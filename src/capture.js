@@ -5,6 +5,7 @@ function updateRecovery(){
  $('#captureRecoveryText').textContent=captureDrafts.size+' capture'+(captureDrafts.size===1?'':'s')+' not saved yet';
 }
 async function saveCapture(entry){
+ entry={...entry,inspectionId:inspectionForEntry(entry,state.areas)};
  if(entry.type==='voice'&&$('#transcribe').checked&&!entry.transcriptionState){entry={...entry,transcriptionState:'queued',transcriptionModelKey:entry.transcriptionModelKey||selectedModelKey,transcriptionStatus:'Queued for on-device transcription.'}}
  pendingSaves++;updateRecovery();
  try{
