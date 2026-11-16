@@ -32,7 +32,7 @@ for(const size of [192,512]){
 }
 await writeFile(path.join(out,'.nojekyll'),'');
 async function walk(dir){let files=[];for(const e of await readdir(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())files.push(...await walk(p));else files.push(path.relative(out,p).split(path.sep).join('/'))}return files.sort()}
-const files=await walk(out),hash=createHash('sha256');for(const f of files)hash.update(f).update(await readFile(path.join(out,f)));const version=hash.digest('hex').slice(0,16),cacheName='fieldnote-shell-'+version;
+const files=(await walk(out)).filter(file=>!file.startsWith('.')),hash=createHash('sha256');for(const f of files)hash.update(f).update(await readFile(path.join(out,f)));const version=hash.digest('hex').slice(0,16),cacheName='fieldnote-shell-'+version;
 const manifest={version,cacheName,files:[...files,'offline-assets.json','sw-config.js']};
 await writeFile(path.join(out,'offline-assets.json'),JSON.stringify(manifest));
 await writeFile(path.join(out,'sw-config.js'),'self.FIELDNOTE_CACHE='+JSON.stringify({CACHE:cacheName,FILES:manifest.files,MODEL_CACHE})+';\n');
