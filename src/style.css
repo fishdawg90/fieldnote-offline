@@ -33,7 +33,7 @@ main{max-width:var(--page-width);height:calc(100dvh - 54px - var(--dock-height) 
 .asset-score span{display:block;font-size:8px;white-space:nowrap}.asset-score b{display:block;font-size:14px;margin-top:3px}
 .rag-grey{background:#e6e9e6;color:#5e6961;border-color:#d6dcd6}.rag-red{background:#f3dfdc;color:#953f39;border-color:#e8c4c0}.rag-amber{background:#f5ebd1;color:#84621a;border-color:#e8d8ac}.rag-green{background:#dfece1;color:#3f714e;border-color:#bed8c5}
 .map-stage{flex:1;min-height:100px;display:flex;flex-direction:column;position:relative}
-.gis-map-tools{flex:none;margin-bottom:6px;gap:5px}.gis-map-tools button{font-size:10px;padding:7px 10px;border-radius:9px}.gis-map-tools button.active{background:var(--ink);color:white}
+.gis-map-tools{flex:none;margin-bottom:6px;gap:5px}.gis-map-tools button{font-size:10px;padding:7px 10px;border-radius:9px}
 #gisMap{flex:1;height:auto!important;min-height:0!important;max-height:none;border-radius:12px;touch-action:none}
 .gis-labels{position:absolute;top:0;left:0;z-index:450;pointer-events:none}
 .gis-map-note{font-size:9px;line-height:1.2;margin:5px 0 0;flex:none}
@@ -56,3 +56,20 @@ main{max-width:var(--page-width);height:calc(100dvh - 54px - var(--dock-height) 
 @media(max-height:560px){:root{--dock-height:124px}.field-header{height:44px}main{height:calc(100dvh - 44px - var(--dock-height) - env(safe-area-inset-bottom))}.feature-panel{max-height:30dvh}.asset-fields{grid-template-columns:repeat(3,1fr)}.asset-scores{padding-top:2px}.asset-score{padding:3px}.asset-score b{font-size:12px}.capturebuttons{min-height:42px}.dock-context{min-height:25px}.dock-context button{padding:4px 10px}}
 
 .asset-score{flex:1 0 30px;min-width:30px}.asset-score span{overflow:hidden;text-overflow:ellipsis}@media(max-width:650px){.asset-score{flex:1 0 30px;min-width:30px}.asset-score span{font-size:7px}}
+
+/* Field refinements: location heading, larger area target, persistent GPS switch. */
+:root{--dock-height:174px}
+.feature-heading{align-items:flex-start;flex-wrap:wrap;gap:4px 8px}
+.feature-heading strong{font-size:20px;line-height:1.2;letter-spacing:-.45px;flex:1 1 160px;overflow-wrap:anywhere}
+.feature-heading .textbtn{margin-left:0;flex:none}
+.feature-reference{display:block;color:var(--muted);font-size:10px;margin:3px 0 4px;flex:none}
+.asset-fields>div:first-child{grid-column:auto;font-size:11px}
+.dock-context{min-height:48px}
+.dock-context .current-area{min-height:48px;min-width:138px;font-size:15px;padding:11px 18px;border-radius:13px;max-width:65%}
+.field-header{justify-content:flex-start;gap:7px}
+.field-header #backupMenu{margin-left:auto}
+.gps-toggle{min-height:38px;min-width:67px;padding:7px 9px;font-size:11px;border-radius:10px;color:var(--muted);white-space:nowrap}
+.gps-toggle.active{background:#e8eddf;color:#6c672d;border-color:#d4dcc5}
+.gps-toggle.gps-ready{background:#dfece1;color:#356246;border-color:#bed8c5}
+@media(max-width:650px){.field-header .app-tabs button{padding:8px 11px}.dock-context .current-area{font-size:15px}}
+@media(max-height:560px){:root{--dock-height:154px}.dock-context{min-height:44px}.dock-context .current-area{min-height:44px;padding:9px 16px}}

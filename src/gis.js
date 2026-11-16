@@ -90,9 +90,10 @@ function gisPopup(feature,layerName){
 }
 const GIS_COLOURS=['#27715c','#407ba9','#bd7d28','#9972aa','#ba5c55','#5a8d88','#7c8c3b','#585e9b'];
 const RAG_COLOURS={grey:'#89918b',red:'#ba655f',amber:'#bc9647',green:'#679477'};
-let gisSelectedShape=null,gisSelectedAsset=null,gisLabelCanvas=null,gisLabelFrame=0,gisImagery=null,gisImageryKey='',gisSatelliteOn=false;
+let gisSelectedShape=null,gisSelectedAsset=null,gisLabelCanvas=null,gisLabelFrame=0;
 function gisShapeStyle(feature,selected=false){
- const band=overallBand(assetValue(feature.properties,'aosOverallRAG')),colour=RAG_COLOURS[band];
+ const reference=assetValue(feature.properties,'ANNEX_A6_LABELS');
+ const band=presentAssetValue(reference)?overallBand(assetValue(feature.properties,'aosOverallRAG')):'grey',colour=RAG_COLOURS[band];
  return {color:colour,weight:selected?3:1.5,fillColor:colour,fillOpacity:selected?.34:.16,opacity:selected?1:.8};
 }
 function selectGISAsset(feature,shape,layerName){
@@ -100,9 +101,10 @@ function selectGISAsset(feature,shape,layerName){
  gisSelectedShape=shape;gisSelectedAsset=assetDetails(feature.properties);shape.setStyle(gisShapeStyle(feature,true));
  const asset=gisSelectedAsset,box=$('#featurePanel');box.replaceChildren();
  const heading=document.createElement('div');heading.className='feature-heading';
- const title=document.createElement('strong');title.textContent=asset.reference||layerName;heading.append(title);
+ const title=document.createElement('strong');title.textContent=asset.name||asset.reference||layerName;heading.append(title);
  if(asset.reference){const use=document.createElement('button');use.className='textbtn';use.textContent='Work in '+asset.reference;use.onclick=()=>useGISArea(asset.reference);heading.append(use)}
  const close=document.createElement('button');close.className='textbtn';close.textContent='✕';close.setAttribute('aria-label','Clear selected shape');close.onclick=clearGISAsset;heading.append(close);box.append(heading);
+ if(asset.reference){const reference=document.createElement('small');reference.className='feature-reference';reference.textContent=asset.reference;box.append(reference)}
  const details=document.createElement('div');details.className='asset-fields';
  for(const field of asset.fields){const row=document.createElement('div'),label=document.createElement('span'),value=document.createElement('span');label.className='asset-field-label';label.textContent=field.label;value.textContent=String(field.value);row.append(label,value);details.append(row)}
  if(!asset.fields.length){const empty=document.createElement('small');empty.textContent='No listed asset details.';details.append(empty)}
@@ -146,13 +148,13 @@ function drawGISLabels(){
 }
 async function drawGIS(fit=false){
  await gisLibrariesReady();
- if(gisMap){gisMap.remove();gisMap=null}gisLayers=[];gisGPS=null;gisImagery=null;gisSelectedShape=null;gisSelectedAsset=null;
+ if(gisMap){gisMap.remove();gisMap=null}gisLayers=[];gisGPS=null;gisSelectedShape=null;gisSelectedAsset=null;
  const L=window.L,geo=gisMode==='geographic';
  gisMap=L.map('gisMap',{crs:geo?L.CRS.EPSG3857:L.CRS.Simple,preferCanvas:true,minZoom:geo?1:-25,maxZoom:geo?24:15,attributionControl:true,zoomControl:true});
  gisMap.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
  L.control.scale({imperial:false}).addTo(gisMap);
  const layers=gisRecord?.layers||[];
- $('#gisViewMode').value=gisMode;$('#gisLocate').disabled=!geo||!layers.length;$('#gisSatellite').disabled=!geo;
+ $('#gisViewMode').value=gisMode;$('#gisLocate').disabled=!geo||!layers.length;
  $('#gisLayerList').innerHTML=layers.map((layer,i)=>'<label class="gis-layer"><input type="checkbox" data-layer="'+i+'" '+(layer.visible!==false?'checked':'')+' '+(layer.mode!==gisMode?'disabled':'')+'><span class="gis-swatch" style="background:'+GIS_COLOURS[i%GIS_COLOURS.length]+'"></span><span>'+esc(layer.name)+'<small>'+layer.features.toLocaleString()+' features'+(layer.mode!==gisMode?' · other coordinate view':'')+'</small></span></label>').join('');
  $('#gisLayerCount').textContent='Layers ('+layers.length+')';
  for(let i=0;i<layers.length;i++){
@@ -161,34 +163,30 @@ async function drawGIS(fit=false){
   gisLayers[i]=group;if(item.visible!==false)group.addTo(gisMap);
  }
  gisMap.setView([0,0],geo?2:0);if(fit)fitGIS();
- $('#gisMapNote').textContent=geo?(layers.length?'Tap a shape · labels appear as you zoom':'Load your airfield in the GIS tab'):'Local XY · GPS and satellite unavailable';
+ $('#gisMapNote').textContent=geo?(layers.length?'Tap a shape · labels appear as you zoom':'Load your airfield in the GIS tab'):'Local XY · GPS alignment unavailable';
  $('#gisMap').classList.toggle('gis-local',!geo);
  gisLabelCanvas=document.createElement('canvas');gisLabelCanvas.className='gis-labels';gisLabelCanvas.setAttribute('aria-hidden','true');gisMap.getContainer().append(gisLabelCanvas);
  gisMap.on('move zoom resize layeradd layerremove',queueGISLabels);
- clearGISAsset();syncGISImagery();setTimeout(()=>{gisMap?.invalidateSize();queueGISLabels()},0);
-}
-function syncGISImagery(){
- if(gisImagery){gisMap?.removeLayer(gisImagery);gisImagery=null}
- const enabled=gisSatelliteOn&&gisMode==='geographic'&&!!gisImageryKey&&navigator.onLine;
- $('#gisSatellite').setAttribute('aria-pressed',String(enabled));$('#gisSatellite').classList.toggle('active',enabled);
- if(!enabled)return;
- gisImagery=window.L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token='+encodeURIComponent(gisImageryKey),{
-  maxNativeZoom:19,maxZoom:24,referrerPolicy:'strict-origin-when-cross-origin',
-  attribution:'Tiles © Esri — Sources: Esri, DigitalGlobe, GeoEye, i-cubed, USDA FSA, USGS, AEX, Getmapping, Aerogrid, IGN, IGP, swisstopo, and the GIS User Community'
- }).addTo(gisMap);
- let warned=false;gisImagery.on('tileerror',()=>{if(warned)return;warned=true;gisSatelliteOn=false;syncGISImagery();toast('Satellite unavailable. Check the imagery key, basemap access and network in GIS setup.')});
+ clearGISAsset();updateGISPosition(snapshotGPS());setTimeout(()=>{gisMap?.invalidateSize();queueGISLabels()},0);
 }
 function fitGIS(){
  if(!gisMap)return;const L=window.L,bounds=L.latLngBounds([]);
  for(const layer of gisLayers)if(layer&&gisMap.hasLayer(layer)&&layer.getBounds().isValid())bounds.extend(layer.getBounds());
  if(bounds.isValid())gisMap.fitBounds(bounds,{padding:[20,20],maxZoom:gisMode==='geographic'?20:10});
 }
+function updateGISPosition(gps,pan=false){
+ if(!gisMap||gisMode!=='geographic')return;
+ if(!gps){if(gisGPS){gisMap.removeLayer(gisGPS);gisGPS=null}return}
+ const L=window.L,point=[gps.latitude,gps.longitude],radius=Math.max(2,gps.accuracy);
+ if(gisGPS)gisGPS.setLatLng(point).setRadius(radius);
+ else gisGPS=L.circle(point,{radius,color:'#1473cf',weight:2,fillOpacity:.15}).addTo(gisMap);
+ gisGPS.bindPopup('Device position · accuracy ±'+Math.round(gps.accuracy)+' m');
+ if(pan){gisMap.panTo(point);gisGPS.openPopup()}
+}
 async function locateGIS(){
  if(gisMode!=='geographic')return;
  const gps=await fix();if(!gps)return toast('GPS unavailable. Allow location and try again outdoors.');
- const L=window.L;if(gisGPS)gisMap.removeLayer(gisGPS);
- gisGPS=L.circle([gps.latitude,gps.longitude],{radius:Math.max(2,gps.accuracy),color:'#1473cf',weight:2,fillOpacity:.15}).addTo(gisMap).bindPopup('Device position · accuracy ±'+Math.round(gps.accuracy)+' m');
- gisMap.panTo([gps.latitude,gps.longitude]);gisGPS.openPopup();
+ updateGISPosition(gps,true);
 }
 async function showAppView(view){
  if(!$('#recordsPanel').hidden)closeRecordsView();
@@ -236,12 +234,8 @@ function initCaptureLayout(){
 }
 function initGIS(){
  initCaptureLayout();
- void tx('settings','readonly',store=>store.get('gis-imagery')).then(setting=>{gisImageryKey=setting?.key||'';$('#gisImageryKey').value=gisImageryKey}).catch(fail);
- $('#gisSatellite').onclick=()=>{if(gisMode!=='geographic')return;if(!navigator.onLine)return toast('Satellite needs internet. The airfield layout remains available offline.');if(!gisImageryKey){void showAppView('gis');$('#gisImageryKey').focus();return toast('Add an ArcGIS basemap key in GIS setup first.')}gisSatelliteOn=!gisSatelliteOn;syncGISImagery()};
- $('#gisSaveImagery').onclick=async()=>{try{const key=$('#gisImageryKey').value.trim();await put('settings',{id:'gis-imagery',key});gisImageryKey=key;$('#gisImageryStatus').textContent=key?'Saved on this phone. Enable Satellite in Capture.':'No key saved.';if(gisSatelliteOn)syncGISImagery()}catch(error){fail(error)}};
- $('#gisClearImagery').onclick=async()=>{try{await put('settings',{id:'gis-imagery',key:''});gisImageryKey='';$('#gisImageryKey').value='';gisSatelliteOn=false;syncGISImagery();$('#gisImageryStatus').textContent='Imagery key removed.'}catch(error){fail(error)}};
- window.addEventListener('offline',()=>syncGISImagery());
- window.addEventListener('online',()=>{if(gisSatelliteOn)syncGISImagery()});
+ // Remove the retired imagery credential from device settings.
+ void tx('settings','readwrite',store=>store.delete('gis-imagery')).catch(fail);
  document.querySelectorAll('[data-app-view]').forEach(b=>b.onclick=()=>showAppView(b.dataset.appView));
  $('#gisLoad').onclick=()=>$('#gisFile').click();$('#gisFile').onchange=async()=>{const file=$('#gisFile').files[0];if(file)await scanGIS(file);$('#gisFile').value=''};
  $('#gisDemo').onclick=async()=>{try{const response=await fetch(new URL('./gis-demo.gdb.zip',appBase));if(!response.ok)throw Error('Demo unavailable; reopen online.');await scanGIS(new File([await response.blob()],'Synthetic-airfield.gdb.zip',{type:'application/zip'}))}catch(error){gisStatus(error.message)}};

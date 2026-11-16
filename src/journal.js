@@ -2,7 +2,7 @@ import {groupLegacyAreas,inspectionForEntry,inspectionScope,prepareInspectionRes
 
 'use strict';
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={inspections:[],inspection:null,areas:[],entries:[],selected:null,filter:'all',gps:null,gpsError:'GPS off',watch:null,recording:null,urls:[],detail:null};
+const state={inspections:[],inspection:null,areas:[],entries:[],selected:null,filter:'all',gps:null,gpsError:'GPS off',watch:null,gpsEnabled:false,recording:null,urls:[],detail:null};
 let db,toastTimer,recordOpening=false;
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),5000)}
 function fail(e){console.error(e);toast('Could not complete: '+(e?.message||e)+'. Your existing saved records are unchanged.');}
@@ -49,11 +49,60 @@ function areaName(id){return state.areas.find(a=>a.id===id)?.name||'Unknown area
 function stamp(t){return new Date(t).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
 function render(){renderInspectionPicker();const {areas,entries}=currentScope();areas.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));for(const u of state.urls)URL.revokeObjectURL(u);state.urls=[];const n=entries.length;$('#totals').textContent=`${areas.length} areas · ${n} records`;$('#areas').innerHTML=`<button class="area ${state.selected===null?'active':''}" data-area="all"><b>All areas</b><small>${n} records</small></button>`+areas.map(a=>`<button class="area ${state.selected===a.id?'active':''}" data-area="${esc(a.id)}"><b>${esc(a.name)}</b><small>${entries.filter(e=>e.area===a.id).length} records</small></button>`).join('')+`<button class="area" data-area="add" aria-label="Add area" ${state.inspection?'':'disabled'}>＋ New area</button>`;$('#captureTitle').textContent=state.selected?areaName(state.selected):!state.inspection?'Create an inspection':areas.length?'Select an area':'Add an area';$('#takePhoto').disabled=$('#takeVoice').disabled=$('#importPhoto').disabled=$('#importAudio').disabled=$('#nativeRecord').disabled=!state.selected;$('#rename').hidden=!state.selected;$('#entriesTitle').textContent=state.selected?areaName(state.selected)+' journal':'All observations';const q=$('#search').value.toLowerCase();const list=entries.filter(e=>(!state.selected||e.area===state.selected)&&(state.filter==='all'||e.type===state.filter)&&(!q||(areaName(e.area)+' '+e.text).toLowerCase().includes(q))).sort((a,b)=>b.created-a.created);$('#entries').innerHTML=list.map(e=>{let art;if(e.type==='photo'){const u=URL.createObjectURL(e.blob);state.urls.push(u);art=`<img src="${u}" alt="Photo in ${esc(areaName(e.area))}" loading="lazy">`}else art='<div class="audioart" aria-hidden="true">'+[15,25,40,22,50,35,60,32,45,20,35,16].map(h=>`<i style="height:${h}px"></i>`).join('')+'</div>';return `<button class="card" data-entry="${esc(e.id)}">${art}<div class="cardbody"><div class="cardhead"><b>${esc(areaName(e.area))}</b><span class="badge">${e.type==='photo'?'Photo':duration(e.duration)}</span></div><p class="${['queued','processing'].includes(e.transcriptionState)?'processing-label':''}">${esc(e.text||(e.type==='voice'?(e.transcriptionState==='queued'?'Queued…':e.transcriptionState==='processing'?'Transcribing…':e.transcriptionState==='failed'?'Tap to retry transcription':'Tap to listen'):'Photo'))}</p><small>${stamp(e.created)}</small><div style="margin-top:7px"><small>${e.gps?'● GPS saved · '+Math.round(e.gps.accuracy||0)+' m':e.exifGPS?'● Photo GPS retained':'○ No GPS saved'}</small></div></div></button>`}).join('')||'<div class="empty"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h3"/></svg><h3>'+ (q?'No matches':'Nothing here yet')+'</h3><p>'+(!state.inspection?'Name an inspection to get started.':!areas.length?'Add your first area.':'Add a photo or voice note.')+'</p></div>';renderGPS();updateControls();renderCaptureDock()}
 function duration(s=0){return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0')}
-function renderGPS(){const g=state.gps;const fresh=g&&Date.now()-g.timestamp<60000;$('#gpsDot').classList.toggle('good',!!fresh);$('#gpsStatus').textContent=fresh?`GPS ±${Math.round(g.accuracy)} m`:g?'GPS fix expired':state.gpsError;$('#getGPS').textContent=state.watch===null?'Enable':'Refresh'}
-function startGPS(){if(!navigator.geolocation){state.gpsError='Location unavailable in this browser';renderGPS();return}if(state.watch!==null)navigator.geolocation.clearWatch(state.watch);state.gpsError='Finding location…';renderGPS();state.watch=navigator.geolocation.watchPosition(p=>{state.gps={latitude:p.coords.latitude,longitude:p.coords.longitude,altitude:p.coords.altitude,accuracy:p.coords.accuracy,timestamp:p.timestamp};renderGPS()},e=>{state.gpsError=e.code===1?'Location permission denied':e.code===3?'GPS timed out — try outdoors':'Location unavailable';renderGPS()},{enableHighAccuracy:true,maximumAge:0,timeout:20000})}
+let gpsWatchEpoch=0;
+function renderGPS(){
+ const g=state.gps,fresh=g&&Math.abs(Date.now()-g.timestamp)<60000;
+ $('#gpsDot').classList.toggle('good',!!fresh);
+ $('#gpsStatus').textContent=fresh?'GPS ±'+Math.round(g.accuracy)+' m':g?'GPS fix expired':state.gpsError;
+ $('#getGPS').textContent=state.gpsEnabled?'Refresh':'Enable';
+ const button=$('#gpsToggle');
+ button.setAttribute('aria-pressed',String(state.gpsEnabled));
+ button.classList.toggle('active',state.gpsEnabled);button.classList.toggle('gps-ready',!!fresh&&state.gpsEnabled);
+ button.textContent=!state.gpsEnabled?'GPS off':document.hidden?'GPS paused':fresh?'GPS on':'GPS…';
+ button.title=state.gpsEnabled?(fresh?'Continuous GPS · accuracy ±'+Math.round(g.accuracy)+' m. ':'Waiting for GPS. ')+'Locking the phone can pause updates; refreshes when you return. Tap to turn off.':'Keep GPS connected while this app is visible. Captures can still request a single fix when off.';
+ updateGISPosition(fresh?g:null);
+}
+function saveGPSPreference(){void put('settings',{id:'gps-tracking',enabled:state.gpsEnabled}).catch(fail)}
+function clearGPSWatch(){
+ gpsWatchEpoch++;if(state.watch!==null)navigator.geolocation?.clearWatch(state.watch);state.watch=null;
+}
+function refreshGPSWatch(){
+ clearGPSWatch();state.gps=null;
+ if(!state.gpsEnabled){renderGPS();return}
+ if(!navigator.geolocation){state.gpsEnabled=false;state.gpsError='Location unavailable in this browser';saveGPSPreference();renderGPS();return}
+ if(document.hidden){state.gpsError='GPS paused while app is hidden';renderGPS();return}
+ const epoch=gpsWatchEpoch;state.gpsError='Finding location…';renderGPS();
+ try{
+  state.watch=navigator.geolocation.watchPosition(position=>{
+   if(epoch!==gpsWatchEpoch||!state.gpsEnabled||document.hidden)return;
+   if(Math.abs(Date.now()-position.timestamp)>=60000)return;
+   state.gps={latitude:position.coords.latitude,longitude:position.coords.longitude,altitude:position.coords.altitude,accuracy:position.coords.accuracy,timestamp:position.timestamp};
+   renderGPS();
+  },error=>{
+   if(epoch!==gpsWatchEpoch||!state.gpsEnabled)return;
+   state.gps=null;state.gpsError=error.code===1?'Location permission denied':error.code===3?'GPS timed out — try outdoors':'Location unavailable';
+   if(error.code===1){clearGPSWatch();state.gpsEnabled=false;saveGPSPreference()}
+   renderGPS();
+  },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+ }catch(error){clearGPSWatch();state.gpsEnabled=false;state.gpsError='Location unavailable';saveGPSPreference();renderGPS()}
+}
+function startGPS(){state.gpsEnabled=true;saveGPSPreference();refreshGPSWatch()}
+function stopGPS(){state.gpsEnabled=false;clearGPSWatch();state.gps=null;state.gpsError='GPS off';saveGPSPreference();renderGPS()}
 function snapshotGPS(){return state.gps&&Math.abs(Date.now()-state.gps.timestamp)<60000?{...state.gps}:null}
-async function fix(){if(snapshotGPS())return snapshotGPS();if(!navigator.geolocation)return null;return new Promise(resolve=>navigator.geolocation.getCurrentPosition(p=>{state.gps={latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy,altitude:p.coords.altitude,timestamp:p.timestamp};renderGPS();resolve({...state.gps})},()=>resolve(null),{enableHighAccuracy:true,maximumAge:0,timeout:12000}))}
+async function fix(){
+ if(snapshotGPS())return snapshotGPS();if(!navigator.geolocation)return null;
+ return new Promise(resolve=>navigator.geolocation.getCurrentPosition(position=>{
+  if(Math.abs(Date.now()-position.timestamp)>=60000)return resolve(null);
+  state.gps={latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy,altitude:position.coords.altitude,timestamp:position.timestamp};
+  renderGPS();resolve({...state.gps});
+ },()=>resolve(null),{enableHighAccuracy:true,maximumAge:0,timeout:12000}));
+}
+$('#gpsToggle').onclick=()=>state.gpsEnabled?stopGPS():startGPS();
 $('#getGPS').onclick=startGPS;setInterval(renderGPS,10000);
+function resumeGPS(){if(state.gpsEnabled)refreshGPSWatch();else renderGPS()}
+document.addEventListener('visibilitychange',resumeGPS);
+window.addEventListener('pageshow',resumeGPS);
+window.addEventListener('pagehide',()=>{clearGPSWatch();state.gps=null});
 $('#areas').onclick=e=>{let b=e.target.closest('[data-area]');if(!b)return;if(b.dataset.area==='add'){areaEdit(false);return}state.selected=b.dataset.area==='all'?null:b.dataset.area;render();void rememberInspection().catch(fail)};let editingArea=false;
 function areaEdit(edit){if(!state.inspection)return editInspection();editingArea=edit;$('#areaHeading').textContent=edit?'Edit area':'Add an area';$('#areaName').value=edit?areaName(state.selected):'';$('#deleteArea').classList.toggle('hidden',!edit||state.entries.some(e=>e.area===state.selected));$('#areaDialog').showModal();$('#areaName').focus()}
 $('#rename').onclick=()=>areaEdit(true);$('#areaForm').onsubmit=async e=>{e.preventDefault();try{const name=$('#areaName').value.trim();if(!name)return;if(state.areas.some(a=>a.inspectionId===state.inspection&&a.name.toLowerCase()===name.toLowerCase()&&(!editingArea||a.id!==state.selected)))return toast('An area with this title already exists');const a={...(editingArea?state.areas.find(x=>x.id===state.selected):{}),id:editingArea?state.selected:uid(),name,inspectionId:state.inspection};await put('areas',a);state.selected=a.id;$('#areaDialog').close();await reload();await rememberInspection()}catch(e){fail(e)}};$('#deleteArea').onclick=async()=>{try{if(state.entries.some(e=>e.area===state.selected))return;await tx('areas','readwrite',o=>o.delete(state.selected));state.selected=null;$('#areaDialog').close();await reload()}catch(e){fail(e)}};
@@ -162,9 +211,10 @@ async function init(){
  try{
   await openDB();await initialiseInspections();const settings=await all('settings');const p=settings.find(x=>x.id==='preferences');
   if(p){$('#language').value=p.language;$('#transcribe').checked=p.transcribe}
+  state.gpsEnabled=settings.find(x=>x.id==='gps-tracking')?.enabled===true;
   const nav=settings.find(x=>x.id==='inspection-navigation');
   state.inspection=state.inspections.some(x=>x.id===nav?.inspection)?nav.inspection:state.inspections[0]?.id||null;
   state.selected=currentScope().areas.some(a=>a.id===nav?.area)?nav.area:currentScope().areas[0]?.id||null;
-  await reload();if(navigator.storage?.estimate){const x=await navigator.storage.estimate();$('#storageInfo').textContent=`Device storage used: ${(x.usage/1024/1024).toFixed(1)} MB`}
+  await reload();if(state.gpsEnabled)refreshGPSWatch();if(navigator.storage?.estimate){const x=await navigator.storage.estimate();$('#storageInfo').textContent=`Device storage used: ${(x.usage/1024/1024).toFixed(1)} MB`}
  }catch(e){fail(e);$('#captureTitle').textContent='Device storage unavailable';$('#takePhoto').disabled=$('#takeVoice').disabled=true}
 }
