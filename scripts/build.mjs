@@ -1,0 +1,40 @@
+import {mkdir,rm,readFile,writeFile,copyFile,readdir} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {deflateSync} from 'node:zlib';
+import path from 'node:path';
+import {MODEL_CACHE} from '../src/offline-config.js';
+const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'dist');
+await rm(out,{recursive:true,force:true});await mkdir(path.join(out,'vendor'),{recursive:true});
+for(const file of ['index.html','style.css','offline-config.js','whisper-worker.js','manifest.webmanifest','icon.svg','sample.wav'])await copyFile(path.join(root,'src',file),path.join(out,file));
+const app=await readFile(path.join(root,'src/offline.js'),'utf8')+'\n'+await readFile(path.join(root,'src/journal.js'),'utf8');
+await writeFile(path.join(out,'app.js'),app);
+await copyFile(path.join(root,'node_modules/@huggingface/transformers/dist/transformers.min.js'),path.join(out,'vendor/transformers.web.min.js'));
+for(const file of ['ort-wasm-simd-threaded.jsep.wasm','ort-wasm-simd-threaded.jsep.mjs','ort.bundle.min.mjs'])await copyFile(path.join(root,'node_modules/onnxruntime-web/dist',file),path.join(out,'vendor',file));
+await copyFile(path.join(root,'node_modules/@huggingface/transformers/LICENSE'),path.join(out,'TRANSFORMERS-LICENSE.txt'));
+await copyFile(path.join(root,'LICENSE'),path.join(out,'APP-LICENSE.txt'));
+await copyFile(path.join(root,'LICENSES/ONNX-RUNTIME.txt'),path.join(out,'ONNX-RUNTIME-LICENSE.txt'));
+await copyFile(path.join(root,'LICENSES/WHISPER.txt'),path.join(out,'WHISPER-LICENSE.txt'));
+await writeFile(path.join(out,'NOTICE.txt'),'Fieldnote Offline proof of concept. Transformers.js: Apache-2.0, Hugging Face. ONNX Runtime: MIT, Microsoft. Whisper Tiny English: MIT, OpenAI; ONNX conversion: Xenova. Speech sample: excerpt of the public-domain 1961 JFK inaugural address, sourced from Xenova/transformers.js-docs/jfk.wav. App source: MIT. See repository README for source URLs and limitations.\n');
+// Generate dependency-free PNG app icons.
+const table=Array.from({length:256},(_,n)=>{for(let i=0;i<8;i++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0});
+function crc(data){let c=0xffffffff;for(const x of data)c=table[(c^x)&255]^(c>>>8);return(c^0xffffffff)>>>0}
+function chunk(type,data){const t=Buffer.from(type),n=Buffer.alloc(4),c=Buffer.alloc(4);n.writeUInt32BE(data.length);c.writeUInt32BE(crc(Buffer.concat([t,data])));return Buffer.concat([n,t,data,c])}
+for(const size of [192,512]){
+ const raw=Buffer.alloc((size*4+1)*size);
+ for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+  const nx=x/size,ny=y/size;
+  const border=nx>=.31&&nx<=.69&&ny>=.2&&ny<=.8&&(nx<.355||nx>.645||ny<.245||ny>.755);
+  const line=nx>.405&&nx<.595&&((ny>.35&&ny<.39)||(ny>.47&&ny<.51)||(ny>.59&&ny<.63&&nx<.52));
+  const i=y*(size*4+1)+1+x*4;raw.set(border||line?[212,236,156,255]:[25,61,52,255],i);
+ }
+ const head=Buffer.alloc(13);head.writeUInt32BE(size,0);head.writeUInt32BE(size,4);head[8]=8;head[9]=6;
+ await writeFile(path.join(out,'icon-'+size+'.png'),Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',head),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]));
+}
+await writeFile(path.join(out,'.nojekyll'),'');
+async function walk(dir){let files=[];for(const e of await readdir(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())files.push(...await walk(p));else files.push(path.relative(out,p).split(path.sep).join('/'))}return files.sort()}
+const files=await walk(out),hash=createHash('sha256');for(const f of files)hash.update(f).update(await readFile(path.join(out,f)));const version=hash.digest('hex').slice(0,16),cacheName='fieldnote-shell-'+version;
+const manifest={version,cacheName,files:[...files,'offline-assets.json','sw-config.js']};
+await writeFile(path.join(out,'offline-assets.json'),JSON.stringify(manifest));
+await writeFile(path.join(out,'sw-config.js'),'self.FIELDNOTE_CACHE='+JSON.stringify({CACHE:cacheName,FILES:manifest.files,MODEL_CACHE})+';\n');
+await copyFile(path.join(root,'src/sw-template.js'),path.join(out,'sw.js'));
+console.log('Built Fieldnote Offline '+version+' · '+manifest.files.length+' cached files.');
