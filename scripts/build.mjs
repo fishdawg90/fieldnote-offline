@@ -8,8 +8,13 @@ await rm(out,{recursive:true,force:true});await mkdir(path.join(out,'vendor'),{r
 for(const file of ['index.html','style.css','offline-config.js','whisper-worker.js','manifest.webmanifest','icon.svg','sample.wav'])await copyFile(path.join(root,'src',file),path.join(out,file));
 const app=await readFile(path.join(root,'src/offline.js'),'utf8')+'\n'+await readFile(path.join(root,'src/journal.js'),'utf8');
 await writeFile(path.join(out,'app.js'),app);
-await copyFile(path.join(root,'node_modules/@huggingface/transformers/dist/transformers.min.js'),path.join(out,'vendor/transformers.web.min.js'));
-for(const file of ['ort-wasm-simd-threaded.jsep.wasm','ort-wasm-simd-threaded.jsep.mjs','ort.bundle.min.mjs'])await copyFile(path.join(root,'node_modules/onnxruntime-web/dist',file),path.join(out,'vendor',file));
+// Use the WASM-only runtime: both external imports share its Tensor implementation.
+let transformer=await readFile(path.join(root,'node_modules/@huggingface/transformers/dist/transformers.web.min.js'),'utf8');
+const external='import*as e from"onnxruntime-common";import*as t from"onnxruntime-web";';
+if(!transformer.startsWith(external))throw Error('Pinned Transformers bundle changed unexpectedly.');
+transformer=transformer.replace(external,'import*as e from"./ort.wasm.min.mjs";import*as t from"./ort.wasm.min.mjs";');
+await writeFile(path.join(out,'vendor/transformers.web.min.js'),transformer);
+for(const file of ['ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs','ort.wasm.min.mjs'])await copyFile(path.join(root,'node_modules/onnxruntime-web/dist',file),path.join(out,'vendor',file));
 await copyFile(path.join(root,'node_modules/@huggingface/transformers/LICENSE'),path.join(out,'TRANSFORMERS-LICENSE.txt'));
 await copyFile(path.join(root,'LICENSE'),path.join(out,'APP-LICENSE.txt'));
 await copyFile(path.join(root,'LICENSES/ONNX-RUNTIME.txt'),path.join(out,'ONNX-RUNTIME-LICENSE.txt'));

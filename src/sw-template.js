@@ -3,6 +3,9 @@ const {CACHE,FILES,MODEL_CACHE}=self.FIELDNOTE_CACHE;
 const scope=new URL('./',self.location.href);
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
+ // Discard interrupted model-file fragments; complete model files are retained.
+ const models=await caches.open(MODEL_CACHE);
+ for(const key of await models.keys())if(new URL(key.url).searchParams.has('chunk')){const base=key.url.split('?')[0];if(!await models.match(base))await models.delete(key)}
  // Sequential writes limit peak memory on phones and keep failures resumable.
  for(const [i,path] of FILES.entries()){for(const client of await self.clients.matchAll({includeUncontrolled:true}))client.postMessage({type:'shell-progress',text:'Saving app files for offline use · '+(i+1)+' / '+FILES.length});const url=new URL(path,scope).href;if(!await cache.match(url)){const response=await fetch(url,{cache:'reload'});if(!response.ok)throw Error('Offline file missing: '+path);await cache.put(url,response)}}
  await self.skipWaiting();

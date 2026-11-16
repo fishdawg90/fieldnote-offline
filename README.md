@@ -5,7 +5,7 @@ A mobile field notebook for named areas (A4, A5, etc.), original photos, audio n
 ## First use on the work phone
 
 1. Open the published GitHub Pages URL in Chrome, not an embedded preview.
-2. While on Wi-Fi, tap **Prepare for offline use**. Keep the page open. The app/runtime is about 22 MB and Whisper files about 43 MB. Completed downloads are reused after interruption.
+2. While on Wi-Fi, tap **Prepare for offline use**. Keep the page open. The app/runtime is about 12 MB and Whisper files about 43 MB. Completed downloads are reused after interruption.
 3. Tap **Run local sample test**. Expect a transcript including “my fellow Americans”.
 4. In Chrome's menu choose **Install app / Add to home screen** (the installation button also appears if the browser offers it).
 5. Turn on airplane mode, close and reopen the app from the home screen, and repeat the sample test.

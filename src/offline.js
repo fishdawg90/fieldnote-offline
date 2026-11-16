@@ -150,6 +150,6 @@ async function initOffline(){
  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('#installApp').hidden=false});
  $('#installApp').onclick=async()=>{if(installPrompt){await installPrompt.prompt();installPrompt=null;$('#installApp').hidden=true}};
  $('#deviceDiagnostics').textContent='Secure page: '+(isSecureContext?'yes':'no')+' · Browser microphone API: '+(navigator.mediaDevices?.getUserMedia?'available':'unavailable')+' · Model: Whisper Tiny English, 8-bit · Runtime: WebAssembly, one thread';
- try{const storage=await navigator.storage?.estimate?.();if(storage)$('#deviceDiagnostics').textContent+=' · Browser storage allowance: '+mb(storage.quota)+' · Used: '+mb(storage.usage);await ensureServiceWorker();const check=await readiness();status(check.ready?'Offline files are present. Run the local sample test to check this phone.':'One-time setup needed: '+mb(modelBytes)+' speech files plus about 22 MB of app/runtime files. Use Wi-Fi.')}catch(e){status('Offline setup unavailable: '+e.message)}
+ try{const storage=await navigator.storage?.estimate?.();if(storage)$('#deviceDiagnostics').textContent+=' · Browser storage allowance: '+mb(storage.quota)+' · Used: '+mb(storage.usage);await ensureServiceWorker();const check=await readiness();status(check.ready?'Offline files are present. Run the local sample test to check this phone.':'One-time setup needed: '+mb(modelBytes)+' speech files plus about 12 MB of app/runtime files. Use Wi-Fi.')}catch(e){status('Offline setup unavailable: '+e.message)}
  updateControls();
 }
