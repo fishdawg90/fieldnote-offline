@@ -216,6 +216,7 @@ function closeRecordsView(){
  if(history.state?.fieldnoteRecords)history.back();else hideRecordsView();
 }
 function initCaptureLayout(){
+ initAreaActions();
  $('#currentArea').onclick=()=>{if(!state.inspection)return editInspection();$('#areaPicker').showModal()};
  $('#editWorkingArea').onclick=()=>{$('#areaPicker').close();areaEdit(true)};
  $('#areas').addEventListener('click',event=>{if(event.target.closest('[data-area]'))$('#areaPicker').close()});

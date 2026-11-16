@@ -9,7 +9,19 @@ function fail(e){console.error(e);toast('Could not complete: '+(e?.message||e)+'
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
 async function openDB(){db=await new Promise((resolve,reject)=>{let r=indexedDB.open('fieldnote-area-journal',3);r.onupgradeneeded=()=>{for(const name of ['areas','entries','settings','inspections','gis'])if(!r.result.objectStoreNames.contains(name))r.result.createObjectStore(name,{keyPath:'id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});db.onversionchange=()=>db.close()}
 function tx(store,mode,fn){return new Promise((res,rej)=>{const t=db.transaction(store,mode);let r=fn(t.objectStore(store));t.oncomplete=()=>res(r?.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||Error('Storage write cancelled'))})}
-const all=s=>tx(s,'readonly',o=>o.getAll()), put=(s,v)=>tx(s,'readwrite',o=>o.put(v));
+const all=s=>tx(s,'readonly',o=>o.getAll());
+function put(store,value){
+ if(store!=='entries')return tx(store,'readwrite',o=>o.put(value));
+ // A late GPS/transcription callback must not recreate records in a deleted area.
+ return new Promise((resolve,reject)=>{
+  const t=db.transaction(['areas','entries'],'readwrite');let missing=false;
+  t.objectStore('areas').get(value.area).onsuccess=event=>{
+   if(!event.target.result){missing=true;t.abort();return}
+   t.objectStore('entries').put(value);
+  };
+  t.oncomplete=()=>resolve(value.id);t.onerror=()=>reject(t.error);t.onabort=()=>reject(missing?Error('This working area was deleted; the record was not saved.'):t.error||Error('Record save cancelled'));
+ });
+}
 async function reload(){
  [state.areas,state.entries,state.inspections]=await Promise.all([all('areas'),all('entries'),all('inspections')]);
  if(!state.inspections.some(x=>x.id===state.inspection))state.inspection=state.inspections[0]?.id||null;
@@ -104,8 +116,9 @@ document.addEventListener('visibilitychange',resumeGPS);
 window.addEventListener('pageshow',resumeGPS);
 window.addEventListener('pagehide',()=>{clearGPSWatch();state.gps=null});
 $('#areas').onclick=e=>{let b=e.target.closest('[data-area]');if(!b)return;if(b.dataset.area==='add'){areaEdit(false);return}state.selected=b.dataset.area==='all'?null:b.dataset.area;render();void rememberInspection().catch(fail)};let editingArea=false;
-function areaEdit(edit){if(!state.inspection)return editInspection();editingArea=edit;$('#areaHeading').textContent=edit?'Edit area':'Add an area';$('#areaName').value=edit?areaName(state.selected):'';$('#deleteArea').classList.toggle('hidden',!edit||state.entries.some(e=>e.area===state.selected));$('#areaDialog').showModal();$('#areaName').focus()}
-$('#rename').onclick=()=>areaEdit(true);$('#areaForm').onsubmit=async e=>{e.preventDefault();try{const name=$('#areaName').value.trim();if(!name)return;if(state.areas.some(a=>a.inspectionId===state.inspection&&a.name.toLowerCase()===name.toLowerCase()&&(!editingArea||a.id!==state.selected)))return toast('An area with this title already exists');const a={...(editingArea?state.areas.find(x=>x.id===state.selected):{}),id:editingArea?state.selected:uid(),name,inspectionId:state.inspection};await put('areas',a);state.selected=a.id;$('#areaDialog').close();await reload();await rememberInspection()}catch(e){fail(e)}};$('#deleteArea').onclick=async()=>{try{if(state.entries.some(e=>e.area===state.selected))return;await tx('areas','readwrite',o=>o.delete(state.selected));state.selected=null;$('#areaDialog').close();await reload()}catch(e){fail(e)}};
+function areaEdit(edit){if(!state.inspection)return editInspection();editingArea=edit;$('#areaHeading').textContent=edit?'Edit area':'Add an area';$('#areaName').value=edit?areaName(state.selected):'';$('#deleteArea').classList.toggle('hidden',!edit);$('#areaDialog').showModal();$('#areaName').focus()}
+$('#rename').onclick=()=>areaEdit(true);$('#areaForm').onsubmit=async e=>{e.preventDefault();try{const name=$('#areaName').value.trim();if(!name)return;if(state.areas.some(a=>a.inspectionId===state.inspection&&a.name.toLowerCase()===name.toLowerCase()&&(!editingArea||a.id!==state.selected)))return toast('An area with this title already exists');const a={...(editingArea?state.areas.find(x=>x.id===state.selected):{}),id:editingArea?state.selected:uid(),name,inspectionId:state.inspection};await put('areas',a);state.selected=a.id;$('#areaDialog').close();await reload();await rememberInspection()}catch(e){fail(e)}};$('#deleteArea').onclick=()=>{const id=state.selected;$('#areaDialog').close();void openAreaActions(id)};
+
 $('#filters').onclick=e=>{let b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;$('#filters').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));render()};$('#search').oninput=render;
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 let photoContext=null;$('#importPhoto').onclick=()=>{photoContext={area:state.selected,kind:'import'};$('#settings').close();$('#gallery').click()};
@@ -217,4 +230,69 @@ async function init(){
   state.selected=currentScope().areas.some(a=>a.id===nav?.area)?nav.area:currentScope().areas[0]?.id||null;
   await reload();if(state.gpsEnabled)refreshGPSWatch();if(navigator.storage?.estimate){const x=await navigator.storage.estimate();$('#storageInfo').textContent=`Device storage used: ${(x.usage/1024/1024).toFixed(1)} MB`}
  }catch(e){fail(e);$('#captureTitle').textContent='Device storage unavailable';$('#takePhoto').disabled=$('#takeVoice').disabled=true}
+}
+
+
+let areaActionTarget=null,deletingWorkingArea=false;
+function areaRemovalBusy(){
+ return !!(state.recording||recordOpening||cameraSession||pendingSaves||captureDrafts.size||queueRunning||transcriptionBusy);
+}
+function commitWorkingAreaDeletion(areaId,inspectionId,expectedEntryIds){
+ return new Promise((resolve,reject)=>{
+  const t=db.transaction(['areas','entries'],'readwrite');let area,entries,received=0,reason=null;
+  const abort=message=>{reason=Error(message);t.abort()};
+  const ready=()=>{
+   if(++received!==2)return;
+   if(!area||area.inspectionId!==inspectionId)return abort('This area is no longer in the selected inspection.');
+   const records=entries.filter(entry=>entry.area===areaId),expected=new Set(expectedEntryIds);
+   if(records.length!==expected.size||records.some(entry=>!expected.has(entry.id)))return abort('The records changed. Review the area and try deleting again.');
+   for(const entry of records)t.objectStore('entries').delete(entry.id);
+   t.objectStore('areas').delete(areaId);
+  };
+  t.objectStore('areas').get(areaId).onsuccess=event=>{area=event.target.result;ready()};
+  t.objectStore('entries').getAll().onsuccess=event=>{entries=event.target.result;ready()};
+  t.oncomplete=()=>resolve();t.onerror=()=>reject(reason||t.error);t.onabort=()=>reject(reason||t.error||Error('Area deletion cancelled'));
+ });
+}
+async function openAreaActions(id){
+ const area=state.areas.find(a=>a.id===id&&a.inspectionId===state.inspection);if(!area)return;
+ areaActionTarget={id:area.id,inspectionId:area.inspectionId};
+ $('#areaActionName').textContent=area.name;
+ const entries=(await all('entries')).filter(e=>e.area===id),photos=entries.filter(e=>e.type==='photo').length,voice=entries.filter(e=>e.type==='voice').length;
+ $('#areaActionSummary').textContent=entries.length?photos+' photos · '+voice+' voice notes. Deleting this area also deletes its saved records.':'Empty area.';
+ if($('#areaPicker').open)$('#areaPicker').close();
+ $('#areaActions').showModal();
+}
+async function deleteWorkingArea(){
+ const target=areaActionTarget;if(!target||deletingWorkingArea)return;
+ if(areaRemovalBusy())return toast('Finish the current capture, save or transcription before deleting an area.');
+ deletingWorkingArea=true;$('#confirmAreaDelete').disabled=true;
+ try{
+  const area=state.areas.find(a=>a.id===target.id&&a.inspectionId===target.inspectionId);if(!area)return;
+  const records=(await all('entries')).filter(e=>e.area===target.id);
+  if(records.length&&!confirm('Permanently delete “'+area.name+'” and its '+records.filter(e=>e.type==='photo').length+' photos and '+records.filter(e=>e.type==='voice').length+' voice notes? This cannot be undone. Export first if you need a copy.'))return;
+  if(areaRemovalBusy())return toast('A capture or transcription started. Try deleting again when it finishes.');
+  await commitWorkingAreaDeletion(target.id,target.inspectionId,records.map(e=>e.id));
+  if(state.selected===target.id)state.selected=null;
+  $('#areaActions').close();areaActionTarget=null;await reload();await rememberInspection();toast('Working area deleted');
+ }catch(error){fail(error)}finally{deletingWorkingArea=false;$('#confirmAreaDelete').disabled=false}
+}
+function initAreaActions(){
+ const picker=$('#areas');let timer=null,press=null,suppressUntil=0;
+ const clear=()=>{clearTimeout(timer);timer=null;press=null};
+ const open=id=>{suppressUntil=Date.now()+1000;void openAreaActions(id).catch(fail)};
+ picker.addEventListener('pointerdown',event=>{
+  clear();if(event.button!==0)return;const button=event.target.closest('[data-area]');
+  if(!button||['all','add'].includes(button.dataset.area))return;
+  press={id:button.dataset.area,x:event.clientX,y:event.clientY};
+  timer=setTimeout(()=>{const id=press?.id;clear();if(id)open(id)},550);
+ });
+ picker.addEventListener('pointermove',event=>{if(press&&Math.hypot(event.clientX-press.x,event.clientY-press.y)>10)clear()});
+ for(const event of ['pointerup','pointercancel','pointerleave','scroll'])picker.addEventListener(event,clear);
+ picker.addEventListener('click',event=>{if(Date.now()<suppressUntil){event.preventDefault();event.stopImmediatePropagation()}},true);
+ picker.addEventListener('contextmenu',event=>{
+  const button=event.target.closest('[data-area]');if(!button||['all','add'].includes(button.dataset.area))return;
+  event.preventDefault();clear();if(!$('#areaActions').open)open(button.dataset.area);
+ });
+ $('#confirmAreaDelete').onclick=deleteWorkingArea;
 }

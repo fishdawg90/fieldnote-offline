@@ -104,3 +104,11 @@ Use the top-left GPS switch to keep a high-accuracy location watch active while 
 When the app is hidden, locked, or navigated away from, its watch is cleared and the old fix is discarded. Returning to the visible app restarts an enabled watch and requests a new fix. Callbacks from an earlier watch and positions older than one minute are ignored. Permission denial turns the preference off. The map's accuracy circle updates with fresh positions without automatically panning away from the inspection area.
 
 A web app cannot guarantee GPS while the screen is locked or the browser is suspended. The toggle does not keep the screen awake or bypass phone/employer background policies. Test reacquisition outdoors on the work phone. Satellite integration has been removed; no remote basemap is used.
+
+## Delete a working area
+
+In the area picker, hold an existing area for about half a second (or use its context menu), then tap Delete area. The edit-area dialog also provides Delete area for keyboard/accessibility users. Empty areas delete after that explicit action; areas containing records require a second warning listing the photos and voice notes that will be permanently deleted. Export first if those files are needed.
+
+The area and its records are removed in one transaction. Other inspections/areas remain intact. A changed record list aborts deletion for review. Deletion waits until current recording, camera capture, unsaved drafts and transcription work finish. Entry writes check the parent area in the same transaction, so a delayed GPS or transcription callback cannot recreate records in a deleted area.
+
+Photos captured using the built-in camera are stored as blobs in browser IndexedDB. Fieldnote does not write them to Android's shared camera roll or upload them. The optional Phone camera fallback is a separate Android camera flow and may save a gallery copy; Google Photos, OneDrive or other configured backup tools may back up that copy. Exports can also leave app storage. This app cannot control phone-wide or employer backup policies.
