@@ -36,3 +36,17 @@ export function assetDetails(properties={}){
  if(presentAssetValue(overall))scores.push({key:'aosOverallRAG',label:'Overall',value:overall,band:overallBand(overall)});
  return {reference:presentAssetValue(reference)?String(reference).trim():'',name:presentAssetValue(location)?String(location).trim():'',fields,scores,band:overallBand(overall)};
 }
+
+export function collectAnnexReferences(layers=[]){
+ const seen=new Set(),references=[];
+ for(const layer of layers)for(const feature of layer.geojson?.features||[]){
+  const raw=assetValue(feature.properties,'ANNEX_A6_LABELS');if(!presentAssetValue(raw))continue;
+  const reference=String(raw).trim().slice(0,160),key=reference.toLowerCase();
+  if(!seen.has(key)){seen.add(key);references.push(reference)}
+ }
+ return references;
+}
+export function missingGISAreaNames(references,areas,inspectionId){
+ const names=new Set(areas.filter(area=>area.inspectionId===inspectionId).map(area=>area.name.trim().toLowerCase()));
+ return references.filter(name=>{const key=name.trim().toLowerCase();if(names.has(key))return false;names.add(key);return true});
+}

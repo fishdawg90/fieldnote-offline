@@ -47,13 +47,13 @@ function renderInspectionPicker(){
 let editingInspection=false;
 function editInspection(edit=false){editingInspection=edit;$('#inspectionHeading').textContent=edit?'Rename inspection':'New inspection';$('#inspectionName').value=edit?inspectionName():'';$('#inspectionDialog').showModal();$('#inspectionName').focus()}
 $('#newInspection').onclick=()=>editInspection();$('#renameInspection').onclick=()=>editInspection(true);
-$('#inspectionPicker').onchange=async()=>{try{state.inspection=$('#inspectionPicker').value||null;state.selected=currentScope().areas[0]?.id||null;$('#search').value='';await rememberInspection();render()}catch(error){fail(error)}};
+$('#inspectionPicker').onchange=async()=>{try{state.inspection=$('#inspectionPicker').value||null;state.selected=currentScope().areas[0]?.id||null;$('#search').value='';await rememberInspection();render();void syncGISAreas().then(()=>showGISWorkingArea(state.selected)).catch(fail)}catch(error){fail(error)}};
 $('#inspectionForm').onsubmit=async event=>{
  event.preventDefault();const name=$('#inspectionName').value.trim();if(!name)return;
  try{
   const old=state.inspections.find(x=>x.id===state.inspection),inspection=editingInspection?{...old,name}:{id:uid(),name,created:Date.now()};
   await put('inspections',inspection);state.inspection=inspection.id;if(!editingInspection)state.selected=null;
-  $('#inspectionDialog').close();await reload();await rememberInspection();
+  $('#inspectionDialog').close();await reload();await rememberInspection();await syncGISAreas();await showGISWorkingArea(state.selected);
  }catch(error){fail(error)}
 };
 
@@ -115,9 +115,9 @@ function resumeGPS(){if(state.gpsEnabled)refreshGPSWatch();else renderGPS()}
 document.addEventListener('visibilitychange',resumeGPS);
 window.addEventListener('pageshow',resumeGPS);
 window.addEventListener('pagehide',()=>{clearGPSWatch();state.gps=null});
-$('#areas').onclick=e=>{let b=e.target.closest('[data-area]');if(!b)return;if(b.dataset.area==='add'){areaEdit(false);return}state.selected=b.dataset.area==='all'?null:b.dataset.area;render();void rememberInspection().catch(fail)};let editingArea=false;
+$('#areas').onclick=e=>{let b=e.target.closest('[data-area]');if(!b)return;if(b.dataset.area==='add'){areaEdit(false);return}state.selected=b.dataset.area==='all'?null:b.dataset.area;render();void rememberInspection().catch(fail);void showGISWorkingArea(state.selected).catch(fail)};let editingArea=false;
 function areaEdit(edit){if(!state.inspection)return editInspection();editingArea=edit;$('#areaHeading').textContent=edit?'Edit area':'Add an area';$('#areaName').value=edit?areaName(state.selected):'';$('#deleteArea').classList.toggle('hidden',!edit);$('#areaDialog').showModal();$('#areaName').focus()}
-$('#rename').onclick=()=>areaEdit(true);$('#areaForm').onsubmit=async e=>{e.preventDefault();try{const name=$('#areaName').value.trim();if(!name)return;if(state.areas.some(a=>a.inspectionId===state.inspection&&a.name.toLowerCase()===name.toLowerCase()&&(!editingArea||a.id!==state.selected)))return toast('An area with this title already exists');const a={...(editingArea?state.areas.find(x=>x.id===state.selected):{}),id:editingArea?state.selected:uid(),name,inspectionId:state.inspection};await put('areas',a);state.selected=a.id;$('#areaDialog').close();await reload();await rememberInspection()}catch(e){fail(e)}};$('#deleteArea').onclick=()=>{const id=state.selected;$('#areaDialog').close();void openAreaActions(id)};
+$('#rename').onclick=()=>areaEdit(true);$('#areaForm').onsubmit=async e=>{e.preventDefault();try{const name=$('#areaName').value.trim();if(!name)return;if(state.areas.some(a=>a.inspectionId===state.inspection&&a.name.toLowerCase()===name.toLowerCase()&&(!editingArea||a.id!==state.selected)))return toast('An area with this title already exists');const a={...(editingArea?state.areas.find(x=>x.id===state.selected):{}),id:editingArea?state.selected:uid(),name,inspectionId:state.inspection};await put('areas',a);state.selected=a.id;$('#areaDialog').close();await reload();await rememberInspection();await showGISWorkingArea(state.selected)}catch(e){fail(e)}};$('#deleteArea').onclick=()=>{const id=state.selected;$('#areaDialog').close();void openAreaActions(id)};
 
 $('#filters').onclick=e=>{let b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;$('#filters').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));render()};$('#search').oninput=render;
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());

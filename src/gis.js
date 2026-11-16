@@ -1,4 +1,4 @@
-import {assetDetails,assetValue,presentAssetValue,overallBand} from './asset-data.js';
+import {assetDetails,assetValue,presentAssetValue,overallBand,collectAnnexReferences,missingGISAreaNames} from './asset-data.js';
 let gisMap=null,gisLayers=[],gisGPS=null,gisRecord=null,gisWorker=null,gisPending=null,gisFile=null,gisScan=null,gisBusy=false,gisTimer=null,gisLibraries=null,gisMode='geographic',gisRun=0;
 const GIS_CACHE='fieldnote-gis-runtime-2.8.1';
 const gisStatus=text=>{$('#gisStatus').textContent=text};
@@ -76,7 +76,7 @@ async function loadGISDataset(){
   if(run!==gisRun)return;
   const record={id:'layout',sourceName:gisFile.name,imported:Date.now(),archive:gisScan,...result.result};gisRecord=record;gisMode=record.viewMode;
   $('#gisSourceName').textContent=record.sourceName;gisDiagnostics();await showAppView('journal');await drawGIS(true);
-  try{await put('gis',record);gisStatus('Loaded '+record.layers.length+' layers · '+record.featureCount.toLocaleString()+' features. Saved on this phone.'+(offline?'':' GIS reader needs internet for another import until offline tools are prepared.'))}catch(error){gisStatus('Layout displayed but not saved: '+error.message+'. Keep the ZIP to reimport.')}
+  try{await put('gis',record);await syncGISAreas();gisStatus('Loaded '+record.layers.length+' layers · '+record.featureCount.toLocaleString()+' features. Saved on this phone.'+(offline?'':' GIS reader needs internet for another import until offline tools are prepared.'))}catch(error){gisStatus('Layout displayed but not saved: '+error.message+'. Keep the ZIP to reimport.')}
   $('#gisWarnings').textContent=record.warnings.join('\n');$('#gisWarnings').hidden=!record.warnings.length;
   // Release the GDAL heap after import; this does not affect the rendered map or stored geometry.
   gisWorker?.terminate();gisWorker=null;
@@ -96,7 +96,7 @@ function gisShapeStyle(feature,selected=false){
  const band=presentAssetValue(reference)?overallBand(assetValue(feature.properties,'aosOverallRAG')):'grey',colour=RAG_COLOURS[band];
  return {color:colour,weight:selected?3:1.5,fillColor:colour,fillOpacity:selected?.34:.16,opacity:selected?1:.8};
 }
-function selectGISAsset(feature,shape,layerName){
+function selectGISAsset(feature,shape,layerName,activateArea=true){
  if(gisSelectedShape)gisSelectedShape.setStyle(gisShapeStyle(gisSelectedShape.feature));
  gisSelectedShape=shape;gisSelectedAsset=assetDetails(feature.properties);shape.setStyle(gisShapeStyle(feature,true));
  const asset=gisSelectedAsset,box=$('#featurePanel');box.replaceChildren();
@@ -112,17 +112,21 @@ function selectGISAsset(feature,shape,layerName){
  if(asset.scores.length){const scores=document.createElement('div');scores.className='asset-scores';scores.setAttribute('aria-label','Condition ratings: 0 grey, 1 red, 2 to 3 amber, 4 to 5 green');
  for(const score of asset.scores){const cell=document.createElement('div');cell.className='asset-score rag-'+score.band;cell.title=score.label+': '+score.value+' ('+score.band+')';const label=document.createElement('span'),value=document.createElement('b');label.textContent=score.label;value.textContent=String(score.value);cell.append(label,value);scores.append(cell)}box.append(scores)}
  requestAnimationFrame(()=>gisMap?.invalidateSize());
+ if(activateArea&&asset.reference)void useGISArea(asset.reference);
 }
 function clearGISAsset(){
  if(gisSelectedShape)gisSelectedShape.setStyle(gisShapeStyle(gisSelectedShape.feature));
  gisSelectedShape=null;gisSelectedAsset=null;$('#featurePanel').innerHTML='<div class="feature-empty">Tap an airfield shape to see its details.</div>';requestAnimationFrame(()=>gisMap?.invalidateSize());
 }
+let gisAreaSelection=0;
 async function useGISArea(name){
+ const selection=++gisAreaSelection,inspectionId=state.inspection;
  if(!state.inspection){toast('Name an inspection first.');return editInspection()}
  const title=String(name).trim().slice(0,160);if(!title)return;
  try{let area=currentScope().areas.find(x=>x.name.toLowerCase()===title.toLowerCase());
- if(!area){area={id:uid(),name:title,inspectionId:state.inspection};await put('areas',area);state.areas.push(area)}
- state.selected=area.id;await rememberInspection();render();toast('Working in '+title);
+ if(!area){state.selected=null;render();area={id:uid(),name:title,inspectionId};await put('areas',area);state.areas.push(area)}
+ if(selection!==gisAreaSelection||state.inspection!==inspectionId)return;
+ state.selected=area.id;render();await rememberInspection();
  }catch(error){fail(error)}
 }
 function queueGISLabels(){cancelAnimationFrame(gisLabelFrame);gisLabelFrame=requestAnimationFrame(drawGISLabels)}
@@ -195,7 +199,7 @@ async function showAppView(view){
  if(view!=='journal')return;
  try{
   if(!gisRecord){gisRecord=await tx('gis','readonly',store=>store.get('layout'));if(gisRecord){gisMode=gisRecord.viewMode||'geographic';$('#gisSourceName').textContent=gisRecord.sourceName;$('#gisWarnings').textContent=(gisRecord.warnings||[]).join('\n');$('#gisWarnings').hidden=!gisRecord.warnings?.length;gisDiagnostics();gisStatus('Saved layout · '+gisRecord.layers.length+' layers · '+gisRecord.featureCount.toLocaleString()+' features.')}}
-  if(!gisMap)await drawGIS(!!gisRecord);gisMap.invalidateSize();queueGISLabels();
+  if(!gisMap)await drawGIS(!!gisRecord);gisMap.invalidateSize();queueGISLabels();await syncGISAreas();await showGISWorkingArea(state.selected,false);
  }catch(error){gisStatus(error.message);toast(error.message)}
 }
 function renderCaptureDock(){
@@ -248,4 +252,46 @@ function initGIS(){
  $('#gisViewMode').onchange=async()=>{gisMode=$('#gisViewMode').value;await showAppView('journal');await drawGIS(true)};
  $('#gisLayerList').onchange=e=>{const index=Number(e.target.dataset.layer);if(!Number.isInteger(index)||!gisLayers[index])return;gisRecord.layers[index].visible=e.target.checked;if(e.target.checked)gisLayers[index].addTo(gisMap);else gisMap.removeLayer(gisLayers[index]);queueGISLabels();void put('gis',gisRecord).catch(()=>{})};
  $('#gisReport').onclick=()=>download(new Blob([$('#gisDiagnostics').textContent],{type:'application/json'}),'Fieldnote-GIS-diagnostic.json');
+}
+
+
+const gisAreaSyncs=new Map();
+function syncGISAreas(){
+ const inspectionId=state.inspection,record=gisRecord;if(!inspectionId||!record)return Promise.resolve(0);
+ const key=inspectionId+':'+record.imported;if(gisAreaSyncs.has(key))return gisAreaSyncs.get(key);
+ const work=(async()=>{
+  const references=collectAnnexReferences(record.layers);
+  const added=await new Promise((resolve,reject)=>{
+   const t=db.transaction(['areas','settings'],'readwrite'),markerId='gis-area-import:'+inspectionId;let areas,marker,received=0,count=0;
+   const ready=()=>{
+    if(++received!==2)return;
+    if(marker?.imported===record.imported)return;
+    const names=missingGISAreaNames(references,areas,inspectionId);count=names.length;
+    for(const name of names)t.objectStore('areas').put({id:uid(),name,inspectionId});
+    t.objectStore('settings').put({id:markerId,imported:record.imported});
+   };
+   t.objectStore('areas').getAll().onsuccess=e=>{areas=e.target.result;ready()};
+   t.objectStore('settings').get(markerId).onsuccess=e=>{marker=e.target.result;ready()};
+   t.oncomplete=()=>resolve(count);t.onerror=()=>reject(t.error);t.onabort=()=>reject(t.error||Error('GIS areas could not be saved'));
+  });
+  if(added)await reload();return added;
+ })().finally(()=>gisAreaSyncs.delete(key));
+ gisAreaSyncs.set(key,work);return work;
+}
+async function showGISWorkingArea(id,pan=true){
+ if(!gisMap||!gisRecord)return;
+ const area=state.areas.find(area=>area.id===id&&area.inspectionId===state.inspection);
+ if(!area){clearGISAsset();return}
+ const reference=area.name.trim().toLowerCase();
+ for(let i=0;i<gisLayers.length;i++){
+  const group=gisLayers[i];if(!group)continue;
+  for(const shape of group.getLayers()){
+   const raw=assetValue(shape.feature?.properties,'ANNEX_A6_LABELS');
+   if(!presentAssetValue(raw)||String(raw).trim().toLowerCase()!==reference)continue;
+   selectGISAsset(shape.feature,shape,gisRecord.layers[i].name,false);
+   if(pan){const bounds=shape.getBounds?.();if(bounds?.isValid())gisMap.panTo(bounds.getCenter());else if(shape.getLatLng)gisMap.panTo(shape.getLatLng())}
+   return;
+  }
+ }
+ clearGISAsset();
 }
