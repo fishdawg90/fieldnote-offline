@@ -36,6 +36,16 @@ self.addEventListener('fetch',event=>{
  const request=event.request,url=new URL(request.url);
  if(request.method!=='GET'||url.origin!==scope.origin||!url.pathname.startsWith(scope.pathname))return;
  const relative=url.pathname.slice(scope.pathname.length);
+ if(relative.startsWith('gis-runtime/')){
+  event.respondWith((async()=>{
+   const cache=await caches.open('fieldnote-gis-runtime-2.8.1'),response=await cache.match(request);
+   if(!response)return fetch(request);
+   const chunks=Number(response.headers.get('x-fieldnote-chunks')||0);if(!chunks)return response;
+   let i=0,reader=null;
+   const stream=new ReadableStream({async pull(controller){try{while(true){if(reader){const next=await reader.read();if(!next.done){controller.enqueue(next.value);return}reader=null}if(i>=chunks){controller.close();return}const part=await cache.match(request.url+'?chunk='+i++);if(!part)throw Error('GIS runtime chunk missing. Prepare GIS offline again.');reader=part.body.getReader()}}catch(error){controller.error(error)}},cancel(){return reader?.cancel()}});
+   return new Response(stream,{headers:{'Content-Type':'application/octet-stream','Content-Length':response.headers.get('x-fieldnote-size')}});
+  })());return;
+ }
  if(relative.startsWith('models/')){
   // Model inference never downloads or calls an external service.
   event.respondWith((async()=>{

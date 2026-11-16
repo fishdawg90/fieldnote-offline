@@ -5,9 +5,23 @@ import path from 'node:path';
 import {MODEL_CACHE,MODELS} from '../src/offline-config.js';
 const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'dist');
 await rm(out,{recursive:true,force:true});await mkdir(path.join(out,'vendor'),{recursive:true});
-for(const file of ['index.html','style.css','inspection-data.js','offline-config.js','whisper-worker.js','manifest.webmanifest','icon.svg','sample.wav'])await copyFile(path.join(root,'src',file),path.join(out,file));
-const app=await readFile(path.join(root,'src/offline.js'),'utf8')+'\n'+await readFile(path.join(root,'src/journal.js'),'utf8')+'\n'+await readFile(path.join(root,'src/capture.js'),'utf8')+'\n'+await readFile(path.join(root,'src/boot.js'),'utf8');
+for(const file of ['index.html','style.css','inspection-data.js','gis-worker.js','offline-config.js','whisper-worker.js','manifest.webmanifest','icon.svg','sample.wav'])await copyFile(path.join(root,'src',file),path.join(out,file));
+const app=await readFile(path.join(root,'src/offline.js'),'utf8')+'\n'+await readFile(path.join(root,'src/journal.js'),'utf8')+'\n'+await readFile(path.join(root,'src/capture.js'),'utf8')+'\n'+await readFile(path.join(root,'src/gis.js'),'utf8')+'\n'+await readFile(path.join(root,'src/boot.js'),'utf8');
 await writeFile(path.join(out,'app.js'),app);
+await mkdir(path.join(out,'gis'),{recursive:true});await mkdir(path.join(out,'gis-runtime'),{recursive:true});
+for(const file of ['leaflet.js','leaflet.css'])await copyFile(path.join(root,'node_modules/leaflet/dist',file),path.join(out,'gis',file));
+await copyFile(path.join(root,'node_modules/fflate/umd/index.js'),path.join(out,'gis/fflate.js'));
+const gisCore=await readFile(path.join(root,'src/gis-core.js'),'utf8');await writeFile(path.join(out,'gis-core-classic.js'),gisCore.replaceAll('export ',''));
+await writeFile(path.join(out,'gis-demo.gdb.zip'),Buffer.from((await readFile(path.join(root,'tests/fixtures/airfield.gdb.zip.b64'),'utf8')).trim(),'base64'));
+const gisFiles=[];
+for(const file of ['gdal3.js','gdal3WebAssembly.wasm','gdal3WebAssembly.data']){
+ const bytes=await readFile(path.join(root,'node_modules/gdal3.js/dist/package',file));await writeFile(path.join(out,'gis-runtime',file),bytes);
+ gisFiles.push({path:'gis-runtime/'+file,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});
+}
+await writeFile(path.join(out,'gis-runtime.json'),JSON.stringify({version:'2.8.1',bytes:gisFiles.reduce((s,f)=>s+f.size,0),files:gisFiles}));
+for(const [pkg,label] of [['gdal3.js','GDAL3'],['leaflet','LEAFLET'],['fflate','FFLATE']])await copyFile(path.join(root,'node_modules',pkg,'LICENSE'),path.join(out,label+'-LICENSE.txt'));
+await writeFile(path.join(out,'GIS-SOURCES.txt'),'Unmodified gdal3.js 2.8.1 GIS runtime, LGPL-2.1-or-later. Corresponding source and build instructions: https://github.com/bugra9/gdal3.js/tree/2.8.1 (also https://www.npmjs.com/package/gdal3.js/v/2.8.1). Includes GDAL, PROJ and dependencies; see upstream source for notices. Leaflet 1.9.4 (BSD-2-Clause): https://github.com/Leaflet/Leaflet/tree/v1.9.4 . fflate 0.8.2 (MIT): https://github.com/101arrowz/fflate/tree/v0.8.2 . Synthetic FileGDB fixture contains invented geometry only. No user GIS data is bundled.\n');
+
 // Use the WASM-only runtime: both external imports share its Tensor implementation.
 let transformer=await readFile(path.join(root,'node_modules/@huggingface/transformers/dist/transformers.web.min.js'),'utf8');
 const external='import*as e from"onnxruntime-common";import*as t from"onnxruntime-web";';
@@ -38,7 +52,7 @@ for(const size of [192,512]){
 await writeFile(path.join(out,'.nojekyll'),'');
 async function walk(dir){let files=[];for(const e of await readdir(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())files.push(...await walk(p));else files.push(path.relative(out,p).split(path.sep).join('/'))}return files.sort()}
 const swSource=await readFile(path.join(root,'src/sw-template.js'));
-const files=(await walk(out)).filter(file=>!file.startsWith('.')),hash=createHash('sha256').update(swSource);for(const f of files)hash.update(f).update(await readFile(path.join(out,f)));const version=hash.digest('hex').slice(0,16),cacheName='fieldnote-shell-'+version;
+const files=(await walk(out)).filter(file=>!file.startsWith('.')&&!file.startsWith('gis-runtime/')),hash=createHash('sha256').update(swSource);for(const f of files)hash.update(f).update(await readFile(path.join(out,f)));const version=hash.digest('hex').slice(0,16),cacheName='fieldnote-shell-'+version;
 const runtimeCache='fieldnote-runtime-transformers-3.8.1-wasm-1';
 const manifest={version,cacheName,runtimeCache,files:[...files,'offline-assets.json','sw-config.js']};
 await writeFile(path.join(out,'offline-assets.json'),JSON.stringify(manifest));

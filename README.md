@@ -76,3 +76,15 @@ Desktop browser checks do not establish work-phone compatibility. Base English r
 ## Sources and licensing
 
 App source: MIT. Transformers.js: Apache-2.0, https://github.com/huggingface/transformers.js . ONNX Runtime: MIT, https://github.com/microsoft/onnxruntime . Whisper: MIT, https://github.com/openai/whisper . ONNX model conversion: https://huggingface.co/Xenova/whisper-tiny.en . The six-second test sample is an excerpt of the public-domain JFK inaugural address, originally sourced from https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav and converted to mono 16 kHz PCM. The app's distributed `NOTICE.txt` and license files provide attribution.
+
+## GIS test tab
+
+Choose **GIS test → Load GIS ZIP** and select the complete original ZIP on the phone. Keep all `.gdbtable`, `.gdbtablx`, `.spx`, `.atx` and other geodatabase companions together; individual binary files cannot display a layout. Nested `.gdb` folders and flat geodatabase ZIPs are detected. A synthetic **Try demo** ZIP exercises the same real OpenFileGDB import path. GeoJSON is also accepted inside a ZIP.
+
+The local worker uses pinned GDAL3.js 2.8.1 / OpenFileGDB, reprojects known coordinate systems to WGS84, and displays vector layers with Leaflet. Layer switches, touch pan/zoom, fit-to-layout, attribute popups and a device GPS accuracy circle are provided. Missing coordinate systems use an explicit local XY view with GPS disabled. An optional EPSG override is in troubleshooting; enter it only when known from the source. No tiles, remote basemap, GIS upload or network coordinate transformation service is used. ArcGIS styling and raster layers are not imported.
+
+**Prepare GIS offline** downloads about 40 MB of reader tools once from this app's own host. If browser storage is insufficient, import can run while online and reports that limitation; the data still stays local. Saved layouts can be reopened without the reader. Test import in airplane mode before onsite use. GDAL runs in a separate worker, which is released after conversion. Cancel leaves the previously saved layout intact.
+
+This experimental viewer saves one reference layout separately from inspections. Importing another replaces that reference only. Inspection backups/exports do not include GIS geometry, so retain the original ZIP. Prototype limits: 100 MB compressed ZIP, 256 MB uncompressed, 20,000 ZIP members, 80 layers, 100,000 features and 48 MB converted GeoJSON. Complex or unsupported datasets may require a smaller GIS export. Diagnostics list archive contents, CRS/layer summaries and errors, without feature geometry or attributes; review filenames before sharing.
+
+The automated test imports a synthetic projected three-layer File Geodatabase through the actual WASM reader and checks coordinates and attributes. It cannot establish compatibility with every private airfield database. Distributed GIS-SOURCES.txt and license files identify Leaflet (BSD-2-Clause), fflate (MIT) and unmodified GDAL3.js (LGPL-2.1-or-later); the latter links to its exact upstream source and package.

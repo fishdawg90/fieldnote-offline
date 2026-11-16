@@ -7,7 +7,7 @@ let db,toastTimer,recordOpening=false;
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),5000)}
 function fail(e){console.error(e);toast('Could not complete: '+(e?.message||e)+'. Your existing saved records are unchanged.');}
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2);
-async function openDB(){db=await new Promise((resolve,reject)=>{let r=indexedDB.open('fieldnote-area-journal',2);r.onupgradeneeded=()=>{for(const name of ['areas','entries','settings','inspections'])if(!r.result.objectStoreNames.contains(name))r.result.createObjectStore(name,{keyPath:'id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});db.onversionchange=()=>db.close()}
+async function openDB(){db=await new Promise((resolve,reject)=>{let r=indexedDB.open('fieldnote-area-journal',3);r.onupgradeneeded=()=>{for(const name of ['areas','entries','settings','inspections','gis'])if(!r.result.objectStoreNames.contains(name))r.result.createObjectStore(name,{keyPath:'id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});db.onversionchange=()=>db.close()}
 function tx(store,mode,fn){return new Promise((res,rej)=>{const t=db.transaction(store,mode);let r=fn(t.objectStore(store));t.oncomplete=()=>res(r?.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||Error('Storage write cancelled'))})}
 const all=s=>tx(s,'readonly',o=>o.getAll()), put=(s,v)=>tx(s,'readwrite',o=>o.put(v));
 async function reload(){
