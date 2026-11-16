@@ -48,6 +48,7 @@ function updateControls(){
  $('#transcribeEntry').disabled=!!locked||setupBusy;
  $('#detailText').readOnly=!!locked;
  updateActivity();
+ $('#recordsMemoryNote').hidden=!recordMediaBusy();syncRecordMediaPolicy();
 }
 function settingsTab(name){
  $('#settings').querySelectorAll('[data-settings]').forEach(b=>{const yes=b.dataset.settings===name;b.classList.toggle('active',yes);b.setAttribute('aria-pressed',yes)});
@@ -126,12 +127,12 @@ async function transcribeSaved(id){
  const entry=(await all('entries')).find(e=>e.id===id);if(!entry||entry.type!=='voice')return;
  if(['queued','processing'].includes(entry.transcriptionState))return;
  if(entry.text?.trim()&&!confirm('Replace this observation’s existing transcript / notes with a new Whisper transcript?'))return;
- await put('entries',{...entry,transcriptionState:'queued',transcriptionModelKey:selectedModelKey,transcriptionStatus:'Queued for on-device transcription.'});
+ await put('entries',{...entry,transcriptionState:'queued',transcriptionModelKey:selectedModelKey,transcriptionInterruptions:0,transcriptionStatus:'Queued for on-device transcription.'});
  await reload();void drainQueue();
 }
 async function drainQueue(){
  if(queueRunning||setupBusy||transcriptionBusy||state.recording)return;
- queueRunning=true;
+ queueRunning=true;updateControls();
  try{
   while(!setupBusy&&!state.recording){
    const entry=state.entries.filter(e=>e.transcriptionState==='queued').sort((a,b)=>a.created-b.created)[0];if(!entry)break;
@@ -142,6 +143,7 @@ async function drainQueue(){
    await put('entries',{...entry,transcriptionState:'processing',transcriptionStatus:'Transcribing on this phone…'});await reload();
    const began=performance.now();
    try{
+    await prepareRecordMemory();
     const samples=await audioSamples(entry.blob);let energy=0;for(const x of samples)energy+=x*x;
     if(!samples.length||Math.sqrt(energy/samples.length)<0.001)throw Error('Silent or too quiet. Check audio playback.');
     const result=await askWorker('transcribe',samples,model.key),elapsed=(performance.now()-began)/1000;
@@ -158,13 +160,13 @@ async function drainQueue(){
    }finally{transcriptionBusy=null;await reload();updateControls()}
   }
  }catch(error){console.error('Transcription queue:',error);status('Queue paused: '+error.message)}
- finally{queueRunning=false;updateControls()}
+ finally{queueRunning=false;if(!$('#recordsPanel').hidden)resetWorker();updateControls()}
 }
 function syncOpenDetail(entry){
  if($('#detail').open&&state.detail?.id===entry.id){state.detail=entry;$('#detailText').value=entry.text||'';$('#transcriptStatus').textContent=entry.transcriptionStatus}
 }
 async function restoreQueue(){
- for(const e of state.entries)if(e.transcriptionState==='processing')await put('entries',{...e,transcriptionState:'queued',transcriptionStatus:'Resuming on-device transcription…'});
+ for(const e of state.entries)if(e.transcriptionState==='processing'){const interruptions=(e.transcriptionInterruptions||0)+1;await put('entries',{...e,transcriptionInterruptions:interruptions,transcriptionState:interruptions<=1?'queued':'failed',transcriptionStatus:interruptions<=1?'Audio saved. Resuming interrupted on-device transcription.':'Audio saved. Transcription was interrupted repeatedly; tap Transcribe again to retry. Try Tiny English on this phone.'})}
  await reload();void drainQueue();
 }
 async function localSampleTest(){

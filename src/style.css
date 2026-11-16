@@ -75,3 +75,5 @@ main{max-width:var(--page-width);height:calc(100dvh - 54px - var(--dock-height) 
 @media(max-height:560px){:root{--dock-height:154px}.dock-context{min-height:44px}.dock-context .current-area{min-height:44px;padding:9px 16px}}
 
 #areaPicker .area{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.area-picker-hint{font-size:11px;color:var(--muted);margin:12px 0 0}#areaActions h2{overflow-wrap:anywhere}#areaActions p{font-size:13px}#confirmAreaDelete{min-height:44px}
+
+.photo-placeholder{min-height:64px;background:#e7eddf;color:var(--muted);padding:18px 12px;font-size:11px;width:100%;text-align:center}#recordsMemoryNote{font-size:11px;margin-top:0}#recordsMore{display:block;margin:15px auto}

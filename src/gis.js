@@ -210,6 +210,7 @@ function showRecordsView(){
  history.pushState({...history.state,fieldnoteRecords:true},'');$('#closeRecords').focus();
 }
 function hideRecordsView(){
+ releaseRecordCards();
  $('#recordsPanel').hidden=true;document.body.classList.remove('records-open');gisMap?.invalidateSize();queueGISLabels();
 }
 function closeRecordsView(){

@@ -112,3 +112,9 @@ In the area picker, hold an existing area for about half a second (or use its co
 The area and its records are removed in one transaction. Other inspections/areas remain intact. A changed record list aborts deletion for review. Deletion waits until current recording, camera capture, unsaved drafts and transcription work finish. Entry writes check the parent area in the same transaction, so a delayed GPS or transcription callback cannot recreate records in a deleted area.
 
 Photos captured using the built-in camera are stored as blobs in browser IndexedDB. Fieldnote does not write them to Android's shared camera roll or upload them. The optional Phone camera fallback is a separate Android camera flow and may save a gallery copy; Google Photos, OneDrive or other configured backup tools may back up that copy. Exports can also leave app storage. This app cannot control phone-wide or employer backup policies.
+
+## Records while transcribing
+
+Records are rendered only while the Records view is open and load in batches of 12. During active/starting transcription, cards show text and metadata without decoding original photos. Photo/audio detail previews also pause; they can be loaded explicitly when transcription ends. Closing the journal/detail releases its image/audio URLs and playback resources. An idle Whisper worker is released before displaying gallery media; queued clips can still share a worker while transcription continues.
+
+This addresses a suspected memory-pressure failure when combining original-resolution image decoding with WASM inference on iPhone. The behaviour has automated coverage, but the exact iPhone/browser combination needs a device retest. Originals are unchanged. An interrupted processing entry retries automatically once; a second interruption leaves the recording saved with a manual retry action instead of creating a reload/retry loop. An explicit transcription retry resets that interruption counter.
