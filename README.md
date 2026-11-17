@@ -138,3 +138,9 @@ Regression tests use fake-indexeddb to check mixed-media moves, rollback and com
 Existing asset-code areas such as A6_01 / A6_02 merge into A6 automatically at startup and after restoring a backup. The migration updates areas, record assignments and saved navigation in one transaction, preferring an existing A6 area ID. It is idempotent and never combines different inspections. Descriptive manual names such as North_apron are left intact. All original media, GPS, notes and transcript fields remain; former suffixed reference names are retained in each affected record's previousAreaReferences metadata.
 
 GIS imports now create prefix areas, and taps on individual assets select that prefix for capture. The full Annex label and individual asset attributes remain on the map. Picking a prefix shared by several shapes frames its assets and shows a group summary; tapping a shape shows its individual details. No GIS reimport is required to merge existing areas.
+
+## Capture locations on the GIS map
+
+The Capture map displays small blue camera badges for photos and purple microphone badges for voice notes in the current inspection. The non-interactive overlay follows pan/zoom and refreshes after saves, late GPS attachment, moves, deletion and inspection changes. It reads location metadata only and does not decode media. Nearby captures share a badge/count per type so photos and voice notes at the same position are both visible.
+
+Photo EXIF GPS takes precedence, with separate device GPS as a fallback; voice notes use their saved device location. Invalid/missing coordinates are omitted rather than assigning an area-centre or current-device position. GPS badges are disabled in local XY mode, which cannot be aligned to latitude/longitude. No basemap requests or uploads are added.

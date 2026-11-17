@@ -1,3 +1,4 @@
+import {captureMapPoints,captureMapBadges} from './capture-map.js';
 import {annexAreaName} from './area-groups.js';
 import {assetDetails,assetValue,presentAssetValue,overallBand,collectAnnexReferences,missingGISAreaNames} from './asset-data.js';
 let gisMap=null,gisLayers=[],gisGPS=null,gisRecord=null,gisWorker=null,gisPending=null,gisFile=null,gisScan=null,gisBusy=false,gisTimer=null,gisLibraries=null,gisMode='geographic',gisRun=0;
@@ -153,6 +154,7 @@ function drawGISLabels(){
 }
 async function drawGIS(fit=false){
  await gisLibrariesReady();
+ cancelAnimationFrame(gisLabelFrame);cancelAnimationFrame(gisCaptureFrame);gisLabelCanvas?.remove();gisCaptureCanvas?.remove();gisLabelCanvas=null;gisCaptureCanvas=null;
  if(gisMap){gisMap.remove();gisMap=null}gisLayers=[];gisGPS=null;gisSelectedShape=null;gisSelectedAsset=null;
  const L=window.L,geo=gisMode==='geographic';
  gisMap=L.map('gisMap',{crs:geo?L.CRS.EPSG3857:L.CRS.Simple,preferCanvas:true,minZoom:geo?1:-25,maxZoom:geo?24:15,attributionControl:true,zoomControl:true});
@@ -172,6 +174,8 @@ async function drawGIS(fit=false){
  $('#gisMap').classList.toggle('gis-local',!geo);
  gisLabelCanvas=document.createElement('canvas');gisLabelCanvas.className='gis-labels';gisLabelCanvas.setAttribute('aria-hidden','true');gisMap.getContainer().append(gisLabelCanvas);
  gisMap.on('move zoom resize layeradd layerremove',queueGISLabels);
+ gisCaptureCanvas=document.createElement('canvas');gisCaptureCanvas.className='gis-capture-icons';gisCaptureCanvas.setAttribute('aria-hidden','true');gisMap.getContainer().append(gisCaptureCanvas);
+ gisMap.on('move zoom resize',queueGISCaptureIcons);updateGISCaptureIcons();
  clearGISAsset();updateGISPosition(snapshotGPS());setTimeout(()=>{gisMap?.invalidateSize();queueGISLabels()},0);
 }
 function fitGIS(){
@@ -200,10 +204,11 @@ async function showAppView(view){
  if(view!=='journal')return;
  try{
   if(!gisRecord){gisRecord=await tx('gis','readonly',store=>store.get('layout'));if(gisRecord){gisMode=gisRecord.viewMode||'geographic';$('#gisSourceName').textContent=gisRecord.sourceName;$('#gisWarnings').textContent=(gisRecord.warnings||[]).join('\n');$('#gisWarnings').hidden=!gisRecord.warnings?.length;gisDiagnostics();gisStatus('Saved layout · '+gisRecord.layers.length+' layers · '+gisRecord.featureCount.toLocaleString()+' features.')}}
-  if(!gisMap)await drawGIS(!!gisRecord);gisMap.invalidateSize();queueGISLabels();await syncGISAreas();await showGISWorkingArea(state.selected,false);
+  if(!gisMap)await drawGIS(!!gisRecord);gisMap.invalidateSize();queueGISLabels();queueGISCaptureIcons();await syncGISAreas();await showGISWorkingArea(state.selected,false);
  }catch(error){gisStatus(error.message);toast(error.message)}
 }
 function renderCaptureDock(){
+ updateGISCaptureIcons();
  const scope=currentScope(),selected=state.areas.find(x=>x.id===state.selected);
  $('#currentArea').textContent=selected?selected.name:'＋ Area';$('#currentArea').title=selected?'Working area: '+selected.name:'Choose or create a working area';
  $('#recordsCount').textContent=scope.entries.filter(e=>!state.selected||e.area===state.selected).length;
@@ -304,4 +309,36 @@ async function showGISWorkingArea(id,pan=true){
  $('#featurePanel').replaceChildren(heading,description);
  if(pan){const bounds=window.L.latLngBounds([]);for(const {shape} of matches){if(shape.getBounds)bounds.extend(shape.getBounds());else if(shape.getLatLng)bounds.extend(shape.getLatLng())}if(bounds.isValid())gisMap.fitBounds(bounds,{padding:[20,20],maxZoom:gisMode==='geographic'?20:10})}
  requestAnimationFrame(()=>gisMap?.invalidateSize());
+}
+
+let gisCaptureCanvas=null,gisCaptureFrame=0,gisCapturePoints=[];
+function updateGISCaptureIcons(){
+ gisCapturePoints=captureMapPoints(currentScope().entries);queueGISCaptureIcons();
+ const legend=$('#gisRecordLegend');if(legend)legend.hidden=gisMode!=='geographic';
+}
+function queueGISCaptureIcons(){cancelAnimationFrame(gisCaptureFrame);gisCaptureFrame=requestAnimationFrame(drawGISCaptureIcons)}
+function drawGISCaptureIcons(){
+ if(!gisMap||!gisCaptureCanvas)return;
+ const size=gisMap.getSize(),dpr=Math.min(window.devicePixelRatio||1,2),canvas=gisCaptureCanvas,width=Math.round(size.x*dpr),height=Math.round(size.y*dpr);
+ if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;canvas.style.width=size.x+'px';canvas.style.height=size.y+'px'}
+ const context=canvas.getContext('2d');context.setTransform(dpr,0,0,dpr,0,0);context.clearRect(0,0,size.x,size.y);
+ if(gisMode!=='geographic'||$('#journalPanel').hidden)return;
+ const badges=captureMapBadges(gisCapturePoints,point=>gisMap.latLngToContainerPoint([point.latitude,point.longitude]),size.x,size.y);
+ for(const badge of badges){
+  const both=badge.photos&&badge.voices;
+  if(badge.photos)drawCaptureBadge(context,badge.x-(both?9:0),badge.y,'photo',badge.photos);
+  if(badge.voices)drawCaptureBadge(context,badge.x+(both?9:0),badge.y,'voice',badge.voices);
+ }
+}
+function drawCaptureBadge(context,x,y,type,count){
+ const colour=type==='photo'?'#247bb1':'#8b57aa';
+ context.save();context.translate(x,y);context.fillStyle='#ffffff';context.strokeStyle=colour;context.lineWidth=1.5;context.beginPath();context.arc(0,0,8,0,Math.PI*2);context.fill();context.stroke();
+ context.lineWidth=1.3;context.lineJoin='round';context.lineCap='round';
+ if(type==='photo'){
+  context.beginPath();context.moveTo(-5,-3);context.lineTo(-2,-3);context.lineTo(-1,-4.5);context.lineTo(2,-4.5);context.lineTo(3,-3);context.lineTo(5,-3);context.lineTo(5,4);context.lineTo(-5,4);context.closePath();context.stroke();context.beginPath();context.arc(0,.5,2.2,0,Math.PI*2);context.stroke();
+ }else{
+  context.beginPath();context.moveTo(-1.8,-4);context.bezierCurveTo(-1.8,-6,1.8,-6,1.8,-4);context.lineTo(1.8,0);context.bezierCurveTo(1.8,2,-1.8,2,-1.8,0);context.closePath();context.stroke();context.beginPath();context.moveTo(-4,-.5);context.bezierCurveTo(-4,5,4,5,4,-.5);context.moveTo(0,3.5);context.lineTo(0,5.5);context.moveTo(-2,5.5);context.lineTo(2,5.5);context.stroke();
+ }
+ if(count>1){context.font='bold 8px system-ui';context.textAlign='center';context.textBaseline='middle';context.fillStyle=colour;context.beginPath();context.arc(6,-7,5.5,0,Math.PI*2);context.fill();context.fillStyle='white';context.fillText(count>99?'99+':String(count),6,-7)}
+ context.restore();
 }

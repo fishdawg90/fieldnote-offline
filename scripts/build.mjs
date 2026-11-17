@@ -5,7 +5,7 @@ import path from 'node:path';
 import {MODEL_CACHE,MODELS} from '../src/offline-config.js';
 const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'dist');
 await rm(out,{recursive:true,force:true});await mkdir(path.join(out,'vendor'),{recursive:true});
-for(const file of ['index.html','style.css','inspection-data.js','area-groups.js','asset-data.js','record-storage.js','gis-worker.js','offline-config.js','whisper-worker.js','manifest.webmanifest','icon.svg','sample.wav'])await copyFile(path.join(root,'src',file),path.join(out,file));
+for(const file of ['index.html','style.css','inspection-data.js','area-groups.js','asset-data.js','record-storage.js','capture-map.js','gis-worker.js','offline-config.js','whisper-worker.js','manifest.webmanifest','icon.svg','sample.wav'])await copyFile(path.join(root,'src',file),path.join(out,file));
 const app=await readFile(path.join(root,'src/offline.js'),'utf8')+'\n'+await readFile(path.join(root,'src/journal.js'),'utf8')+'\n'+await readFile(path.join(root,'src/capture.js'),'utf8')+'\n'+await readFile(path.join(root,'src/gis.js'),'utf8')+'\n'+await readFile(path.join(root,'src/boot.js'),'utf8');
 await writeFile(path.join(out,'app.js'),app);
 await mkdir(path.join(out,'gis'),{recursive:true});await mkdir(path.join(out,'gis-runtime'),{recursive:true});
