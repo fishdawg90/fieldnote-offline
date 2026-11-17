@@ -1,4 +1,4 @@
-import {captureMapPoints,captureMapBadges} from './capture-map.js';
+import {captureMapPoints,captureMapIcons} from './capture-map.js';
 import {annexAreaName} from './area-groups.js';
 import {assetDetails,assetValue,presentAssetValue,overallBand,collectAnnexReferences,missingGISAreaNames} from './asset-data.js';
 let gisMap=null,gisLayers=[],gisGPS=null,gisRecord=null,gisWorker=null,gisPending=null,gisFile=null,gisScan=null,gisBusy=false,gisTimer=null,gisLibraries=null,gisMode='geographic',gisRun=0;
@@ -323,22 +323,18 @@ function drawGISCaptureIcons(){
  if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;canvas.style.width=size.x+'px';canvas.style.height=size.y+'px'}
  const context=canvas.getContext('2d');context.setTransform(dpr,0,0,dpr,0,0);context.clearRect(0,0,size.x,size.y);
  if(gisMode!=='geographic'||$('#journalPanel').hidden)return;
- const badges=captureMapBadges(gisCapturePoints,point=>gisMap.latLngToContainerPoint([point.latitude,point.longitude]),size.x,size.y);
- for(const badge of badges){
-  const both=badge.photos&&badge.voices;
-  if(badge.photos)drawCaptureBadge(context,badge.x-(both?9:0),badge.y,'photo',badge.photos);
-  if(badge.voices)drawCaptureBadge(context,badge.x+(both?9:0),badge.y,'voice',badge.voices);
- }
+ const icons=captureMapIcons(gisCapturePoints,point=>gisMap.latLngToContainerPoint([point.latitude,point.longitude]),size.x,size.y);
+ for(const icon of icons)drawCaptureIcon(context,icon.x,icon.y,icon.type);
 }
-function drawCaptureBadge(context,x,y,type,count){
+function drawCaptureIcon(context,x,y,type){
  const colour=type==='photo'?'#247bb1':'#8b57aa';
- context.save();context.translate(x,y);context.fillStyle='#ffffff';context.strokeStyle=colour;context.lineWidth=1.5;context.beginPath();context.arc(0,0,8,0,Math.PI*2);context.fill();context.stroke();
+ context.save();context.translate(x,y);context.scale(.75,.75);context.fillStyle='#ffffff';context.strokeStyle=colour;context.lineWidth=1.5;context.beginPath();context.arc(0,0,8,0,Math.PI*2);context.fill();context.stroke();
  context.lineWidth=1.3;context.lineJoin='round';context.lineCap='round';
  if(type==='photo'){
   context.beginPath();context.moveTo(-5,-3);context.lineTo(-2,-3);context.lineTo(-1,-4.5);context.lineTo(2,-4.5);context.lineTo(3,-3);context.lineTo(5,-3);context.lineTo(5,4);context.lineTo(-5,4);context.closePath();context.stroke();context.beginPath();context.arc(0,.5,2.2,0,Math.PI*2);context.stroke();
  }else{
   context.beginPath();context.moveTo(-1.8,-4);context.bezierCurveTo(-1.8,-6,1.8,-6,1.8,-4);context.lineTo(1.8,0);context.bezierCurveTo(1.8,2,-1.8,2,-1.8,0);context.closePath();context.stroke();context.beginPath();context.moveTo(-4,-.5);context.bezierCurveTo(-4,5,4,5,4,-.5);context.moveTo(0,3.5);context.lineTo(0,5.5);context.moveTo(-2,5.5);context.lineTo(2,5.5);context.stroke();
  }
- if(count>1){context.font='bold 8px system-ui';context.textAlign='center';context.textBaseline='middle';context.fillStyle=colour;context.beginPath();context.arc(6,-7,5.5,0,Math.PI*2);context.fill();context.fillStyle='white';context.fillText(count>99?'99+':String(count),6,-7)}
+
  context.restore();
 }

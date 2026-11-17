@@ -141,6 +141,6 @@ GIS imports now create prefix areas, and taps on individual assets select that p
 
 ## Capture locations on the GIS map
 
-The Capture map displays small blue camera badges for photos and purple microphone badges for voice notes in the current inspection. The non-interactive overlay follows pan/zoom and refreshes after saves, late GPS attachment, moves, deletion and inspection changes. It reads location metadata only and does not decode media. Nearby captures share a badge/count per type so photos and voice notes at the same position are both visible.
+The Capture map displays small blue camera badges for photos and purple microphone badges for voice notes in the current inspection. The non-interactive overlay follows pan/zoom and refreshes after saves, late GPS attachment, moves, deletion and inspection changes. It reads location metadata only and does not decode media. Each capture stays at its exact saved position as an individual 12 CSS-pixel icon at every map zoom level. There is no clustering, count badge or positional offset; captures at identical coordinates can overlap.
 
 Photo EXIF GPS takes precedence, with separate device GPS as a fallback; voice notes use their saved device location. Invalid/missing coordinates are omitted rather than assigning an area-centre or current-device position. GPS badges are disabled in local XY mode, which cannot be aligned to latitude/longitude. No basemap requests or uploads are added.

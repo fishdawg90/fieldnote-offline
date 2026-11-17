@@ -14,14 +14,12 @@ export function captureMapPoints(entries){
  }
  return points;
 }
-// Nearby symbols share a small badge per type so simultaneous captures remain visible.
-export function captureMapBadges(points,project,width,height){
- const cells=new Map();
+// Keep every capture at its own projected GPS point; never cluster or offset it.
+export function captureMapIcons(points,project,width,height){
+ const icons=[];
  for(const point of points){
-  const {x,y}=project(point);if(!Number.isFinite(x)||!Number.isFinite(y)||x< -24||y< -24||x>width+24||y>height+24)continue;
-  const key=Math.round(x/22)+':'+Math.round(y/22);let cell=cells.get(key);
-  if(!cell){cell={x:0,y:0,photos:0,voices:0,count:0};cells.set(key,cell)}
-  cell.x+=x;cell.y+=y;cell.count++;if(point.type==='photo')cell.photos++;else cell.voices++;
+  const {x,y}=project(point);if(!Number.isFinite(x)||!Number.isFinite(y)||x< -8||y< -8||x>width+8||y>height+8)continue;
+  icons.push({id:point.id,type:point.type,x,y});
  }
- return [...cells.values()].map(cell=>({...cell,x:cell.x/cell.count,y:cell.y/cell.count}));
+ return icons;
 }
