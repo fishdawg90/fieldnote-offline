@@ -144,3 +144,12 @@ GIS imports now create prefix areas, and taps on individual assets select that p
 The Capture map displays small blue camera badges for photos and purple microphone badges for voice notes in the current inspection. The non-interactive overlay follows pan/zoom and refreshes after saves, late GPS attachment, moves, deletion and inspection changes. It reads location metadata only and does not decode media. Each capture stays at its exact saved position as an individual 12 CSS-pixel icon at every map zoom level. There is no clustering, count badge or positional offset; captures at identical coordinates can overlap.
 
 Photo EXIF GPS takes precedence, with separate device GPS as a fallback; voice notes use their saved device location. Invalid/missing coordinates are omitted rather than assigning an area-centre or current-device position. GPS badges are disabled in local XY mode, which cannot be aligned to latitude/longitude. No basemap requests or uploads are added.
+
+
+## GPS working-area check
+
+The area button is pale green when a recent GPS accuracy circle fits inside the selected Annex prefix area, pale red when it fits inside a different prefix area, and white when uncertain. A6_01 and A6_02 both compare as A6. This uses the saved geographic polygon layout offline, including hidden polygon layers; lines/points and local XY layouts cannot establish containment.
+
+Confidence requires a fix less than 15 seconds old, reported accuracy of 25 metres or better, and the entire accuracy radius plus a 3 metre margin inside a labelled polygon. Boundary positions, holes, overlapping different references, unlabelled coverage and locations outside the layout remain neutral. The check is deliberately conservative at seams between polygons, including same-prefix polygons. GPS accuracy is an estimate, not a survey guarantee. Status expires automatically and clears while the app is hidden.
+
+Tapping Photo with a confident different area offers to switch to the matching existing area in the current inspection before opening the camera. Accepting updates the capture reference and GIS details; declining retains the selected area and continues capture. The same check applies to Phone camera from Settings; switching from an already open in-app camera retains that camera session's reference. No background GPS permissions or uploads are added.

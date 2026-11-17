@@ -8,7 +8,7 @@ function setup(){
  const $=selector=>{if(!nodes.has(selector))nodes.set(selector,{textContent:'',title:'',attrs:{},classList:{toggle(){}},setAttribute(key,value){this.attrs[key]=value}});return nodes.get(selector)};
  const document={hidden:false,addEventListener(name,fn){handlers[name]=fn}},window={addEventListener(name,fn){handlers[name]=fn}};
  const navigator={geolocation:{watchPosition(ok,error,options){watchers.push({ok,error,options});return watchers.length-1},clearWatch(id){cleared.push(id)}}};
- const api=new Function('state','navigator','document','window','$','put','fail','setInterval','updateGISPosition',code+';return {startGPS,stopGPS,refreshGPSWatch,snapshotGPS};')(state,navigator,document,window,$,async(store,value)=>saved.push(value),()=>{},()=>{},()=>{});
+ const api=new Function('state','navigator','document','window','$','put','fail','setInterval','updateGISPosition','updateGPSAreaButton',code+';return {startGPS,stopGPS,refreshGPSWatch,snapshotGPS};')(state,navigator,document,window,$,async(store,value)=>saved.push(value),()=>{},()=>{},()=>{},()=>{});
  return {state,$,document,handlers,watchers,cleared,saved,...api};
 }
 const position=()=>({coords:{latitude:51.3,longitude:-.1,accuracy:7,altitude:100},timestamp:Date.now()});

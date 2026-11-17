@@ -89,6 +89,8 @@ main{max-width:var(--page-width);height:calc(100dvh - 54px - var(--dock-height) 
 #moveRecordsDialog p{font-size:12px;line-height:1.5}#moveRecordsDialog button{min-height:44px}
 
 .gis-capture-icons{position:absolute;top:0;left:0;z-index:460;pointer-events:none}
+.dock-context .current-area[data-gps-state="match"]{background:#dcecd5;border-color:#77a66a;color:#254b23}
+.dock-context .current-area[data-gps-state="different"]{background:#f6dddd;border-color:#cc8282;color:#7c2727}
 .gis-record-legend{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;flex:none;margin-top:4px;color:var(--muted);font-size:9px;line-height:1.2}
 .gis-record-legend>span{display:inline-flex;gap:3px;align-items:center}.gis-record-legend svg{width:12px;height:12px;stroke-width:1.5}
 .capture-legend-photo{color:#247bb1}.capture-legend-voice{color:#8b57aa}

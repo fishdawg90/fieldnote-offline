@@ -75,6 +75,7 @@ function renderGPS(){
  button.textContent=!state.gpsEnabled?'GPS off':document.hidden?'GPS paused':fresh?'GPS on':'GPS…';
  button.title=state.gpsEnabled?(fresh?'Continuous GPS · accuracy ±'+Math.round(g.accuracy)+' m. ':'Waiting for GPS. ')+'Locking the phone can pause updates; refreshes when you return. Tap to turn off.':'Keep GPS connected while this app is visible. Captures can still request a single fix when off.';
  updateGISPosition(fresh?g:null);
+ updateGPSAreaButton();
 }
 function saveGPSPreference(){void put('settings',{id:'gps-tracking',enabled:state.gpsEnabled}).catch(fail)}
 function clearGPSWatch(){

@@ -1,4 +1,5 @@
 import {captureMapPoints,captureMapIcons} from './capture-map.js';
+import {gpsAreaIndex,gpsAreaStatus} from './gps-area.js';
 import {annexAreaName} from './area-groups.js';
 import {assetDetails,assetValue,presentAssetValue,overallBand,collectAnnexReferences,missingGISAreaNames} from './asset-data.js';
 let gisMap=null,gisLayers=[],gisGPS=null,gisRecord=null,gisWorker=null,gisPending=null,gisFile=null,gisScan=null,gisBusy=false,gisTimer=null,gisLibraries=null,gisMode='geographic',gisRun=0;
@@ -154,6 +155,7 @@ function drawGISLabels(){
 }
 async function drawGIS(fit=false){
  await gisLibrariesReady();
+ gisGPSAreaIndex=gpsAreaIndex(gisRecord?.layers);updateGPSAreaButton();
  cancelAnimationFrame(gisLabelFrame);cancelAnimationFrame(gisCaptureFrame);gisLabelCanvas?.remove();gisCaptureCanvas?.remove();gisLabelCanvas=null;gisCaptureCanvas=null;
  if(gisMap){gisMap.remove();gisMap=null}gisLayers=[];gisGPS=null;gisSelectedShape=null;gisSelectedAsset=null;
  const L=window.L,geo=gisMode==='geographic';
@@ -211,6 +213,7 @@ function renderCaptureDock(){
  updateGISCaptureIcons();
  const scope=currentScope(),selected=state.areas.find(x=>x.id===state.selected);
  $('#currentArea').textContent=selected?selected.name:'＋ Area';$('#currentArea').title=selected?'Working area: '+selected.name:'Choose or create a working area';
+ updateGPSAreaButton();
  $('#recordsCount').textContent=scope.entries.filter(e=>!state.selected||e.area===state.selected).length;
  $('#editWorkingArea').hidden=!state.selected;
 }
@@ -312,6 +315,28 @@ async function showGISWorkingArea(id,pan=true){
 }
 
 let gisCaptureCanvas=null,gisCaptureFrame=0,gisCapturePoints=[];
+let gisGPSAreaIndex=[],gisGPSAreaExpiry=null;
+function currentGPSArea(){
+ const selected=currentScope().areas.find(area=>area.id===state.selected);
+ return gpsAreaStatus(gisMode==='geographic'&&!document.hidden?gisGPSAreaIndex:[],snapshotGPS(),selected?.name);
+}
+function updateGPSAreaButton(){
+ const result=currentGPSArea(),button=$('#currentArea'),selected=state.areas.find(area=>area.id===state.selected);
+ button.dataset.gpsState=result.status;
+ const message=result.status==='match'?'GPS matches '+result.areaName:result.status==='different'?'GPS suggests '+result.areaName+' · different working area':'GPS area uncertain';
+ button.title=(selected?'Working area: '+selected.name+' · ':'')+message;
+ button.setAttribute('aria-description',message);
+ clearTimeout(gisGPSAreaExpiry);
+ if(result.status!=='unknown')gisGPSAreaExpiry=setTimeout(updateGPSAreaButton,Math.max(1,state.gps.timestamp+15000-Date.now()));
+}
+function checkPhotoArea(){
+ const result=currentGPSArea();
+ if(result.status!=='different')return;
+ const area=currentScope().areas.find(area=>annexAreaName(area.name)===result.areaName);
+ if(!area)return;
+ if(!confirm('GPS suggests you are in '+area.name+', but your working area is '+areaName(state.selected)+'. Switch to '+area.name+' before taking the photo?\n\nCancel keeps your current working area.'))return;
+ state.selected=area.id;render();void rememberInspection().catch(fail);void showGISWorkingArea(area.id,false).catch(fail);
+}
 function updateGISCaptureIcons(){
  gisCapturePoints=captureMapPoints(currentScope().entries);queueGISCaptureIcons();
  const legend=$('#gisRecordLegend');if(legend)legend.hidden=gisMode!=='geographic';

@@ -23,6 +23,7 @@ function closeCamera(){
 async function openCamera(){
  if(!state.selected||cameraSession)return;
  if(!navigator.mediaDevices?.getUserMedia)return useSystemCamera();
+ checkPhotoArea();
  const session={area:state.selected,stream:null,opening:Date.now()};cameraSession=session;
  $('#cameraArea').textContent=areaName(session.area);$('#cameraMessage').textContent='Starting camera…';$('#shutter').disabled=true;$('#cameraDialog').showModal();
  session.gpsPromise=fix();
@@ -54,6 +55,7 @@ async function shootPhoto(){
  }catch(error){if(cameraSession===session){$('#shutter').disabled=false;$('#cameraMessage').textContent='Photo not taken. Try again.'}fail(error)}
 }
 function useSystemCamera(){
+ if(!cameraSession)checkPhotoArea();
  const area=cameraSession?.area||state.selected;closeCamera();if(!area)return;
  if($('#settings').open)$('#settings').close();
  photoContext={area,started:Date.now(),gps:snapshotGPS(),kind:'camera',pendingGPS:fix()};$('#camera').click();
