@@ -1,3 +1,4 @@
+import {canonicalAreaName,mergeAreaGroups} from './area-groups.js';
 import {patchEntryRecord,moveRecordsToArea} from './record-storage.js';
 import {groupLegacyAreas,inspectionForEntry,inspectionScope,prepareInspectionRestore} from './inspection-data.js';
 
@@ -118,7 +119,7 @@ window.addEventListener('pageshow',resumeGPS);
 window.addEventListener('pagehide',()=>{clearGPSWatch();state.gps=null});
 $('#areas').onclick=e=>{let b=e.target.closest('[data-area]');if(!b)return;if(b.dataset.area==='add'){areaEdit(false);return}state.selected=b.dataset.area==='all'?null:b.dataset.area;render();void rememberInspection().catch(fail);void showGISWorkingArea(state.selected).catch(fail)};let editingArea=false;
 function areaEdit(edit){if(!state.inspection)return editInspection();editingArea=edit;$('#areaHeading').textContent=edit?'Edit area':'Add an area';$('#areaName').value=edit?areaName(state.selected):'';$('#deleteArea').classList.toggle('hidden',!edit);$('#areaDialog').showModal();$('#areaName').focus()}
-$('#rename').onclick=()=>areaEdit(true);$('#areaForm').onsubmit=async e=>{e.preventDefault();try{const name=$('#areaName').value.trim();if(!name)return;if(state.areas.some(a=>a.inspectionId===state.inspection&&a.name.toLowerCase()===name.toLowerCase()&&(!editingArea||a.id!==state.selected)))return toast('An area with this title already exists');const a={...(editingArea?state.areas.find(x=>x.id===state.selected):{}),id:editingArea?state.selected:uid(),name,inspectionId:state.inspection};await put('areas',a);state.selected=a.id;$('#areaDialog').close();await reload();await rememberInspection();await showGISWorkingArea(state.selected)}catch(e){fail(e)}};$('#deleteArea').onclick=()=>{const id=state.selected;$('#areaDialog').close();void openAreaActions(id)};
+$('#rename').onclick=()=>areaEdit(true);$('#areaForm').onsubmit=async e=>{e.preventDefault();try{const name=canonicalAreaName($('#areaName').value);if(!name)return;if(state.areas.some(a=>a.inspectionId===state.inspection&&a.name.toLowerCase()===name.toLowerCase()&&(!editingArea||a.id!==state.selected)))return toast('An area with this title already exists');const a={...(editingArea?state.areas.find(x=>x.id===state.selected):{}),id:editingArea?state.selected:uid(),name,inspectionId:state.inspection};await put('areas',a);state.selected=a.id;$('#areaDialog').close();await reload();await rememberInspection();await showGISWorkingArea(state.selected)}catch(e){fail(e)}};$('#deleteArea').onclick=()=>{const id=state.selected;$('#areaDialog').close();void openAreaActions(id)};
 
 $('#filters').onclick=e=>{let b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;$('#filters').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));render()};$('#search').oninput=render;
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
@@ -218,12 +219,12 @@ $('#restoreFile').onchange=async()=>{
    t.oncomplete=resolve;t.onerror=()=>reject(t.error);t.onabort=()=>reject(t.error);
   });
   if(grouped.areas[0]){state.inspection=grouped.areas[0].inspectionId;state.selected=grouped.areas[0].id}
-  await reload();await rememberInspection();void restoreQueue();toast('Backup restored');
+  await mergeReferenceAreas();await reload();await rememberInspection();void restoreQueue();toast('Backup restored');
  }catch(error){fail(error)}finally{$('#restoreFile').value=''}
 };
 async function init(){
  try{
-  await openDB();await initialiseInspections();const settings=await all('settings');const p=settings.find(x=>x.id==='preferences');
+  await openDB();await initialiseInspections();await mergeReferenceAreas();const settings=await all('settings');const p=settings.find(x=>x.id==='preferences');
   if(p){$('#language').value=p.language;$('#transcribe').checked=p.transcribe}
   state.gpsEnabled=settings.find(x=>x.id==='gps-tracking')?.enabled===true;
   const nav=settings.find(x=>x.id==='inspection-navigation');
@@ -407,4 +408,10 @@ function initRecordSelection(){
  $('#selectShownRecords').onclick=()=>{for(const card of entries.querySelectorAll('[data-entry]'))selectedRecordIds.add(card.dataset.entry);renderRecordSelection()};
  $('#moveSelectedRecords').onclick=openRecordsMove;$('#moveRecordsForm').onsubmit=commitRecordsMove;
  $('#moveRecordsDialog').addEventListener('cancel',event=>{if(recordMoveBusy)event.preventDefault()});
+}
+
+async function mergeReferenceAreas(){
+ const plan=await mergeAreaGroups(db);
+ if(state.selected&&plan.aliases[state.selected])state.selected=plan.aliases[state.selected];
+ return plan;
 }

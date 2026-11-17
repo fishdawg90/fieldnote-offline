@@ -1,3 +1,4 @@
+import {annexAreaName} from './area-groups.js';
 import {assetDetails,assetValue,presentAssetValue,overallBand,collectAnnexReferences,missingGISAreaNames} from './asset-data.js';
 let gisMap=null,gisLayers=[],gisGPS=null,gisRecord=null,gisWorker=null,gisPending=null,gisFile=null,gisScan=null,gisBusy=false,gisTimer=null,gisLibraries=null,gisMode='geographic',gisRun=0;
 const GIS_CACHE='fieldnote-gis-runtime-2.8.1';
@@ -102,7 +103,7 @@ function selectGISAsset(feature,shape,layerName,activateArea=true){
  const asset=gisSelectedAsset,box=$('#featurePanel');box.replaceChildren();
  const heading=document.createElement('div');heading.className='feature-heading';
  const title=document.createElement('strong');title.textContent=asset.name||asset.reference||layerName;heading.append(title);
- if(asset.reference){const use=document.createElement('button');use.className='textbtn';use.textContent='Work in '+asset.reference;use.onclick=()=>useGISArea(asset.reference);heading.append(use)}
+ if(asset.reference){const use=document.createElement('button');use.className='textbtn';use.textContent='Work in '+annexAreaName(asset.reference);use.onclick=()=>useGISArea(asset.reference);heading.append(use)}
  const close=document.createElement('button');close.className='textbtn';close.textContent='✕';close.setAttribute('aria-label','Clear selected shape');close.onclick=clearGISAsset;heading.append(close);box.append(heading);
  if(asset.reference){const reference=document.createElement('small');reference.className='feature-reference';reference.textContent=asset.reference;box.append(reference)}
  const details=document.createElement('div');details.className='asset-fields';
@@ -122,7 +123,7 @@ let gisAreaSelection=0;
 async function useGISArea(name){
  const selection=++gisAreaSelection,inspectionId=state.inspection;
  if(!state.inspection){toast('Name an inspection first.');return editInspection()}
- const title=String(name).trim().slice(0,160);if(!title)return;
+ const title=annexAreaName(name);if(!title)return;
  try{let area=currentScope().areas.find(x=>x.name.toLowerCase()===title.toLowerCase());
  if(!area){state.selected=null;render();area={id:uid(),name:title,inspectionId};await put('areas',area);state.areas.push(area)}
  if(selection!==gisAreaSelection||state.inspection!==inspectionId)return;
@@ -266,10 +267,10 @@ function syncGISAreas(){
    const t=db.transaction(['areas','settings'],'readwrite'),markerId='gis-area-import:'+inspectionId;let areas,marker,received=0,count=0;
    const ready=()=>{
     if(++received!==2)return;
-    if(marker?.imported===record.imported)return;
+    if(marker?.imported===record.imported&&marker?.referenceVersion===2)return;
     const names=missingGISAreaNames(references,areas,inspectionId);count=names.length;
     for(const name of names)t.objectStore('areas').put({id:uid(),name,inspectionId});
-    t.objectStore('settings').put({id:markerId,imported:record.imported});
+    t.objectStore('settings').put({id:markerId,imported:record.imported,referenceVersion:2});
    };
    t.objectStore('areas').getAll().onsuccess=e=>{areas=e.target.result;ready()};
    t.objectStore('settings').get(markerId).onsuccess=e=>{marker=e.target.result;ready()};
@@ -283,16 +284,24 @@ async function showGISWorkingArea(id,pan=true){
  if(!gisMap||!gisRecord)return;
  const area=state.areas.find(area=>area.id===id&&area.inspectionId===state.inspection);
  if(!area){clearGISAsset();return}
- const reference=area.name.trim().toLowerCase();
+ const reference=annexAreaName(area.name).toLowerCase(),matches=[];
  for(let i=0;i<gisLayers.length;i++){
   const group=gisLayers[i];if(!group)continue;
   for(const shape of group.getLayers()){
    const raw=assetValue(shape.feature?.properties,'ANNEX_A6_LABELS');
-   if(!presentAssetValue(raw)||String(raw).trim().toLowerCase()!==reference)continue;
-   selectGISAsset(shape.feature,shape,gisRecord.layers[i].name,false);
-   if(pan){const bounds=shape.getBounds?.();if(bounds?.isValid())gisMap.panTo(bounds.getCenter());else if(shape.getLatLng)gisMap.panTo(shape.getLatLng())}
-   return;
+   if(presentAssetValue(raw)&&annexAreaName(raw).toLowerCase()===reference)matches.push({shape,name:gisRecord.layers[i].name});
   }
  }
+ if(!matches.length){clearGISAsset();return}
+ if(matches.length===1){
+  const {shape,name}=matches[0];selectGISAsset(shape.feature,shape,name,false);
+  if(pan){const bounds=shape.getBounds?.();if(bounds?.isValid())gisMap.panTo(bounds.getCenter());else if(shape.getLatLng)gisMap.panTo(shape.getLatLng())}
+  return;
+ }
  clearGISAsset();
+ const heading=document.createElement('strong'),description=document.createElement('p');
+ heading.textContent=area.name;description.className='muted';description.textContent=matches.length+' assets · Tap a shape to view its individual details.';
+ $('#featurePanel').replaceChildren(heading,description);
+ if(pan){const bounds=window.L.latLngBounds([]);for(const {shape} of matches){if(shape.getBounds)bounds.extend(shape.getBounds());else if(shape.getLatLng)bounds.extend(shape.getLatLng())}if(bounds.isValid())gisMap.fitBounds(bounds,{padding:[20,20],maxZoom:gisMode==='geographic'?20:10})}
+ requestAnimationFrame(()=>gisMap?.invalidateSize());
 }

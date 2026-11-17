@@ -1,3 +1,4 @@
+import {annexAreaName} from './area-groups.js';
 // Pure presentation rules for the airfield asset schema.
 export const ASSET_FIELDS=[
  ['aosMaintainableElement','Surface'],
@@ -41,7 +42,7 @@ export function collectAnnexReferences(layers=[]){
  const seen=new Set(),references=[];
  for(const layer of layers)for(const feature of layer.geojson?.features||[]){
   const raw=assetValue(feature.properties,'ANNEX_A6_LABELS');if(!presentAssetValue(raw))continue;
-  const reference=String(raw).trim().slice(0,160),key=reference.toLowerCase();
+  const reference=annexAreaName(raw),key=reference.toLowerCase();if(!reference)continue;
   if(!seen.has(key)){seen.add(key);references.push(reference)}
  }
  return references;

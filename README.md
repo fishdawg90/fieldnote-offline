@@ -121,9 +121,9 @@ This addresses a suspected memory-pressure failure when combining original-resol
 
 ## Linked GIS working areas
 
-Loading a layout creates one working area for each unique non-null Annex A6 label in the selected inspection, reusing existing names. Other inspections have their own areas. Opening an existing saved layout after upgrading also creates its areas once; if no inspection is selected, creation waits until one is named/selected. A per-inspection import marker prevents a deleted area from being recreated merely by reopening the app. Reimporting the GIS or explicitly tapping a deleted labelled shape can create it again.
+Loading a layout creates one working area for each unique prefix before the underscore in Annex A6 labels, reusing existing names in the selected inspection. For example, A6_01 and A6_02 both use A6. Other inspections have their own areas. Opening an existing saved layout after upgrading also creates its areas once; if no inspection is selected, creation waits until one is named/selected. A per-inspection import marker prevents a deleted area from being recreated merely by reopening the app. Reimporting the GIS or explicitly tapping a deleted labelled shape can create it again.
 
-Tapping a labelled shape selects its working area for subsequent photos/voice notes. Selecting an area in the picker highlights its matching feature and displays its data, centring the view there; a manual area with no matching shape clears the feature panel. Unlabelled shapes remain grey and do not change the working area. A recording already in progress keeps the area captured when it started.
+Tapping a labelled shape selects its prefix working area for subsequent photos/voice notes. Selecting an area in the picker highlights its matching feature and displays its data, centring the view there; a manual area with no matching shape clears the feature panel. Unlabelled shapes remain grey and do not change the working area. A recording already in progress keeps the area captured when it started.
 
 ## Move multiple records to a reference area
 
@@ -132,3 +132,9 @@ In Records, long-press a card (or use Select) to enter selection mode. Tap addit
 The move validates all selected records and the destination, then updates the group in one IndexedDB transaction. Original media, GPS and transcript fields are retained; stale/deleted or cross-inspection selections abort the whole move. Background transcription and late GPS now patch the latest stored record in a transaction so they cannot undo a reference-area move. Capture's current working area is not changed by moving existing records.
 
 Regression tests use fake-indexeddb to check mixed-media moves, rollback and competing transcript/GPS updates in both transaction orders. Browser QA exercised long-press selection and moving a synthetic photo and voice note from A4 to A5 through the visible interface.
+
+## Prefix areas and merging existing references
+
+Existing asset-code areas such as A6_01 / A6_02 merge into A6 automatically at startup and after restoring a backup. The migration updates areas, record assignments and saved navigation in one transaction, preferring an existing A6 area ID. It is idempotent and never combines different inspections. Descriptive manual names such as North_apron are left intact. All original media, GPS, notes and transcript fields remain; former suffixed reference names are retained in each affected record's previousAreaReferences metadata.
+
+GIS imports now create prefix areas, and taps on individual assets select that prefix for capture. The full Annex label and individual asset attributes remain on the map. Picking a prefix shared by several shapes frames its assets and shows a group summary; tapping a shape shows its individual details. No GIS reimport is required to merge existing areas.
