@@ -7,7 +7,7 @@ function records({busy=false,hidden=false}={}){
  const rows=Array.from({length:30},(_,i)=>({id:String(i),area:'a',type:'photo',blob:{},created:i,text:''}));
  const state={entries:rows,urls:[],selected:'a',filter:'all',inspection:'i'},nodes={'#recordsPanel':{hidden},'#entries':{innerHTML:'',querySelectorAll:()=>[],replaceChildren(){this.innerHTML=''}},'#recordsMore':{},'#search':{value:''}};
  const created=[],revoked=[];let resets=0;
- const api=new Function('state','$','URL','transcriptionBusy','queueRunning','currentScope','resetWorker','esc','areaName','duration','stamp',source+';return {renderRecords,releaseRecordCards,setBusy(value){transcriptionBusy=value}};')(state,key=>nodes[key],{createObjectURL(blob){created.push(blob);return 'blob:'+created.length},revokeObjectURL(url){revoked.push(url)}},busy?'voice':null,false,()=>({entries:rows}),()=>resets++,String,()=> 'Area',()=>'',()=> 'Today');
+ const api=new Function('state','$','URL','transcriptionBusy','queueRunning','currentScope','resetWorker','esc','areaName','duration','stamp','clearRecordSelection','renderRecordSelection',source+';return {renderRecords,releaseRecordCards,setBusy(value){transcriptionBusy=value}};')(state,key=>nodes[key],{createObjectURL(blob){created.push(blob);return 'blob:'+created.length},revokeObjectURL(url){revoked.push(url)}},busy?'voice':null,false,()=>({areas:[{id:'a'}],entries:rows}),()=>resets++,String,()=> 'Area',()=>'',()=> 'Today',()=>{},()=>{});
  return {state,nodes,created,revoked,api,resets:()=>resets};
 }
 test('Records can be read during transcription without creating any image object URLs',()=>{
@@ -25,7 +25,11 @@ test('A repeatedly interrupted transcription keeps its original recording and st
  const offline=await readFile(new URL('../src/offline.js',import.meta.url),'utf8'),fn=offline.slice(offline.indexOf('async function restoreQueue()'),offline.indexOf('async function localSampleTest()'));
  for(const [previous,expected] of [[0,'queued'],[1,'failed']]){
   const blob={original:true},state={entries:[{id:'voice',blob,transcriptionState:'processing',transcriptionInterruptions:previous}]},saved=[];
-  const restore=new Function('state','put','reload','drainQueue',fn+';return restoreQueue;')(state,async(_,record)=>saved.push(record),async()=>{},()=>{});
+  const restore=new Function('state','put','reload','drainQueue','patchEntryRecord','db',fn+';return restoreQueue;')(state,async(_,record)=>saved.push(record),async()=>{},()=>{},async(_,id,patch)=>saved.push({...state.entries.find(entry=>entry.id===id),...patch}),{});
   await restore();assert.equal(saved[0].transcriptionState,expected);assert.equal(saved[0].blob,blob);assert.equal(saved[0].transcriptionInterruptions,previous+1);
  }
+});
+
+test('An emptied working-area journal renders after its last records are moved',()=>{
+ const app=records();app.state.entries.length=0;app.api.renderRecords();assert.ok(app.nodes['#entries'].innerHTML.includes('Nothing here yet'));
 });

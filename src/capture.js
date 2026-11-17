@@ -65,5 +65,5 @@ window.addEventListener('pagehide',()=>{closeCamera();if(state.recording)stopRec
 window.addEventListener('beforeunload',event=>{if(state.recording||pendingSaves||captureDrafts.size){event.preventDefault();event.returnValue='A capture has not finished saving.'}});
 
 async function attachLateGPS(id,promise,created,source){
- try{const gps=await promise;if(!gps||Math.abs(gps.timestamp-created)>15000)return;const entry=(await all('entries')).find(e=>e.id===id);if(entry&&!entry.gps){await put('entries',{...entry,gps,locationSource:source});await reload()}}catch(error){console.warn('Location attachment:',error)}
+ try{const gps=await promise;if(!gps||Math.abs(gps.timestamp-created)>15000)return;const entry=(await all('entries')).find(e=>e.id===id);if(entry&&!entry.gps){await patchEntryRecord(db,id,current=>current.gps?null:{gps,locationSource:source});await reload()}}catch(error){console.warn('Location attachment:',error)}
 }

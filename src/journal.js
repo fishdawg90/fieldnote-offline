@@ -1,3 +1,4 @@
+import {patchEntryRecord,moveRecordsToArea} from './record-storage.js';
 import {groupLegacyAreas,inspectionForEntry,inspectionScope,prepareInspectionRestore} from './inspection-data.js';
 
 'use strict';
@@ -126,7 +127,7 @@ async function photos(input){const ctx=photoContext;if(!ctx||!input.files.length
 $('#camera').onchange=()=>photos($('#camera'));$('#gallery').onchange=()=>photos($('#gallery'));
 let detailURL=null;
 function showDetail(id){const e=state.entries.find(e=>e.id===id);if(!e)return;state.detail=e;$('#detailHeading').textContent=e.type==='photo'?'Photo observation':'Voice observation';renderDetailMedia(e);$('#detailDate').textContent=stamp(e.created)+(e.type==='voice'?' · '+duration(e.duration):'');const g=e.exifGPS||e.gps;$('#detailLocation').innerHTML=g?`<b>${e.exifGPS?'Original photo GPS':'Device location'}</b><br>${Number(g.latitude).toFixed(6)}, ${Number(g.longitude).toFixed(6)}${g.accuracy?' · Accuracy ±'+Math.round(g.accuracy)+' m':''}<br>${g.timestamp?esc(stamp(g.timestamp))+'<br>':''}<a href="https://www.google.com/maps?q=${g.latitude},${g.longitude}" target="_blank" rel="noopener">View on map ↗</a>${e.gps&&e.exifGPS?'<br>Separate capture device fix also saved.':''}${e.locationSource?'<br>'+esc(e.locationSource):''}`:'No GPS was available for this record. Original photo metadata is preserved.';$('#detailArea').innerHTML=state.inspections.map(i=>`<optgroup label="${esc(i.name)}">${state.areas.filter(a=>a.inspectionId===i.id).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}</optgroup>`).join('');$('#detailArea').value=e.area;$('#detailLabel').textContent=e.type==='voice'?'Transcript / notes (editable)':'Photo note';$('#detailText').value=e.text||'';$('#transcriptStatus').classList.toggle('hidden',e.type!=='voice');$('#transcriptStatus').textContent=e.transcriptionStatus||'Check the transcript against the recording.';$('#transcribeEntry').hidden=e.type!=='voice';$('#detail').showModal();updateControls()}
-$('#entries').onclick=e=>{const b=e.target.closest('[data-entry]');if(b)showDetail(b.dataset.entry)};$('#detail').addEventListener('close',releaseDetailMedia);$('#detailForm').onsubmit=async e=>{e.preventDefault();try{const current=(await all('entries')).find(x=>x.id===state.detail.id);if(!current)return;await put('entries',{...current,area:$('#detailArea').value,inspectionId:state.areas.find(a=>a.id===$('#detailArea').value)?.inspectionId,text:$('#detailText').readOnly?current.text:$('#detailText').value});$('#detail').close();await reload();toast('Changes saved')}catch(e){fail(e)}};$('#deleteEntry').onclick=async()=>{if(!confirm('Delete this observation and its media from this device?'))return;try{await tx('entries','readwrite',o=>o.delete(state.detail.id));$('#detail').close();await reload()}catch(e){fail(e)}};
+$('#entries').onclick=e=>{const b=e.target.closest('[data-entry]');if(b){if(recordSelecting)toggleRecordSelection(b.dataset.entry);else showDetail(b.dataset.entry)}};$('#detail').addEventListener('close',releaseDetailMedia);$('#detailForm').onsubmit=async e=>{e.preventDefault();try{const current=(await all('entries')).find(x=>x.id===state.detail.id);if(!current)return;await put('entries',{...current,area:$('#detailArea').value,inspectionId:state.areas.find(a=>a.id===$('#detailArea').value)?.inspectionId,text:$('#detailText').readOnly?current.text:$('#detailText').value});$('#detail').close();await reload();toast('Changes saved')}catch(e){fail(e)}};$('#deleteEntry').onclick=async()=>{if(!confirm('Delete this observation and its media from this device?'))return;try{await tx('entries','readwrite',o=>o.delete(state.detail.id));$('#detail').close();await reload()}catch(e){fail(e)}};
 function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
 function safe(s){return String(s).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,100)||'area'}
 function mediaName(e){const ext=e.type==='photo'?(e.name?.split('.').pop()||'jpg'):(e.name?.split('.').pop()||(e.mime?.includes('mp4')?'m4a':e.mime?.includes('ogg')?'ogg':'webm'));return safe(areaName(e.area))+'_'+new Date(e.created).toISOString().replace(/[:.]/g,'-')+'_'+e.id.slice(0,8)+'.'+safe(ext)}
@@ -310,8 +311,9 @@ function renderRecords(){
  $('#recordsMore').hidden=true;
  if($('#recordsPanel').hidden)return;
  if(!recordMediaBusy())resetWorker();
- const {entries}=currentScope();
- const q=$('#search').value.toLowerCase();const signature=JSON.stringify([state.inspection,state.selected,state.filter,q]);if(signature!==recordSignature){recordSignature=signature;recordLimit=12}const list=entries.filter(e=>(!state.selected||e.area===state.selected)&&(state.filter==='all'||e.type===state.filter)&&(!q||(areaName(e.area)+' '+e.text).toLowerCase().includes(q))).sort((a,b)=>b.created-a.created);$('#recordsMore').hidden=list.length<=recordLimit;$('#entries').innerHTML=list.slice(0,recordLimit).map(e=>{let art;if(e.type==='photo'&&!recordMediaBusy()){const u=URL.createObjectURL(e.blob);state.urls.push(u);art=`<img src="${u}" alt="Photo in ${esc(areaName(e.area))}" loading="lazy">`}else if(e.type==='photo')art='<div class="photo-placeholder">Photo · preview after transcription</div>';else art='<div class="audioart" aria-hidden="true">'+[15,25,40,22,50,35,60,32,45,20,35,16].map(h=>`<i style="height:${h}px"></i>`).join('')+'</div>';return `<button class="card" data-entry="${esc(e.id)}">${art}<div class="cardbody"><div class="cardhead"><b>${esc(areaName(e.area))}</b><span class="badge">${e.type==='photo'?'Photo':duration(e.duration)}</span></div><p class="${['queued','processing'].includes(e.transcriptionState)?'processing-label':''}">${esc(e.text||(e.type==='voice'?(e.transcriptionState==='queued'?'Queued…':e.transcriptionState==='processing'?'Transcribing…':e.transcriptionState==='failed'?'Tap to retry transcription':'Tap to listen'):'Photo'))}</p><small>${stamp(e.created)}</small><div style="margin-top:7px"><small>${e.gps?'● GPS saved · '+Math.round(e.gps.accuracy||0)+' m':e.exifGPS?'● Photo GPS retained':'○ No GPS saved'}</small></div></div></button>`}).join('')||'<div class="empty"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h3"/></svg><h3>'+ (q?'No matches':'Nothing here yet')+'</h3><p>'+(!state.inspection?'Name an inspection to get started.':!areas.length?'Add your first area.':'Add a photo or voice note.')+'</p></div>';
+ const {areas,entries}=currentScope();
+ const q=$('#search').value.toLowerCase();const signature=JSON.stringify([state.inspection,state.selected,state.filter,q]);if(signature!==recordSignature){recordSignature=signature;recordLimit=12;clearRecordSelection()}const list=entries.filter(e=>(!state.selected||e.area===state.selected)&&(state.filter==='all'||e.type===state.filter)&&(!q||(areaName(e.area)+' '+e.text).toLowerCase().includes(q))).sort((a,b)=>b.created-a.created);$('#recordsMore').hidden=list.length<=recordLimit;$('#entries').innerHTML=list.slice(0,recordLimit).map(e=>{let art;if(e.type==='photo'&&!recordMediaBusy()){const u=URL.createObjectURL(e.blob);state.urls.push(u);art=`<img src="${u}" alt="Photo in ${esc(areaName(e.area))}" loading="lazy">`}else if(e.type==='photo')art='<div class="photo-placeholder">Photo · preview after transcription</div>';else art='<div class="audioart" aria-hidden="true">'+[15,25,40,22,50,35,60,32,45,20,35,16].map(h=>`<i style="height:${h}px"></i>`).join('')+'</div>';return `<button class="card" data-entry="${esc(e.id)}"><span class="selection-check" aria-hidden="true"></span>${art}<div class="cardbody"><div class="cardhead"><b>${esc(areaName(e.area))}</b><span class="badge">${e.type==='photo'?'Photo':duration(e.duration)}</span></div><p class="${['queued','processing'].includes(e.transcriptionState)?'processing-label':''}">${esc(e.text||(e.type==='voice'?(e.transcriptionState==='queued'?'Queued…':e.transcriptionState==='processing'?'Transcribing…':e.transcriptionState==='failed'?'Tap to retry transcription':'Tap to listen'):'Photo'))}</p><small>${stamp(e.created)}</small><div style="margin-top:7px"><small>${e.gps?'● GPS saved · '+Math.round(e.gps.accuracy||0)+' m':e.exifGPS?'● Photo GPS retained':'○ No GPS saved'}</small></div></div></button>`}).join('')||'<div class="empty"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h3"/></svg><h3>'+ (q?'No matches':'Nothing here yet')+'</h3><p>'+(!state.inspection?'Name an inspection to get started.':!areas.length?'Add your first area.':'Add a photo or voice note.')+'</p></div>';
+ renderRecordSelection();
 }
 function releaseDetailMedia(){
  const audio=$('#media audio');if(audio){audio.pause();audio.removeAttribute('src');audio.load()}
@@ -341,3 +343,68 @@ async function prepareRecordMemory(){
  await new Promise(resolve=>setTimeout(resolve,0));
 }
 $('#recordsMore').onclick=()=>{recordLimit+=12;renderRecords()};
+
+let recordSelecting=false,recordMoveBusy=false,recordMoveContext=null;
+const selectedRecordIds=new Set();
+function clearRecordSelection(){recordSelecting=false;selectedRecordIds.clear();renderRecordSelection()}
+function renderRecordSelection(){
+ const scopeIds=new Set(currentScope().entries.map(entry=>entry.id));
+ for(const id of selectedRecordIds)if(!scopeIds.has(id))selectedRecordIds.delete(id);
+ $('#recordSelectionToolbar').hidden=!recordSelecting;
+ $('#recordSelectionCount').textContent=selectedRecordIds.size+' selected';
+ $('#moveSelectedRecords').disabled=!selectedRecordIds.size||recordMoveBusy;
+ $('#selectRecords').textContent=recordSelecting?'Done':'Select';
+ $('#selectRecords').setAttribute('aria-pressed',String(recordSelecting));
+ $('#entries').classList.toggle('is-selecting',recordSelecting);
+ for(const card of $('#entries').querySelectorAll('[data-entry]')){
+  const selected=selectedRecordIds.has(card.dataset.entry);
+  card.classList.toggle('record-selected',selected);
+  if(recordSelecting)card.setAttribute('aria-pressed',String(selected));else card.removeAttribute('aria-pressed');
+  const mark=card.querySelector('.selection-check');if(mark)mark.textContent=selected?'✓':'';
+ }
+}
+function toggleRecordSelection(id){
+ if(recordMoveBusy)return;
+ recordSelecting=true;if(selectedRecordIds.has(id))selectedRecordIds.delete(id);else selectedRecordIds.add(id);
+ renderRecordSelection();
+}
+function openRecordsMove(){
+ if(!selectedRecordIds.size||recordMoveBusy)return;
+ const areas=currentScope().areas.slice().sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+ if(!areas.length)return toast('Create a reference area first.');
+ recordMoveContext={ids:[...selectedRecordIds],inspectionId:state.inspection};
+ $('#moveRecordsSummary').textContent='Move '+recordMoveContext.ids.length+' selected records. Photos, recordings, GPS and transcripts are retained.';
+ $('#moveRecordsArea').innerHTML='<option value="">Choose reference area</option>'+areas.map(area=>'<option value="'+esc(area.id)+'">'+esc(area.name)+'</option>').join('');
+ $('#moveRecordsError').hidden=true;$('#moveRecordsDialog').showModal();$('#moveRecordsArea').focus();
+}
+async function commitRecordsMove(event){
+ event.preventDefault();const context=recordMoveContext,areaId=$('#moveRecordsArea').value;
+ if(!context||!areaId||recordMoveBusy)return;
+ recordMoveBusy=true;$('#commitRecordsMove').disabled=true;$('#cancelRecordsMove').disabled=true;renderRecordSelection();
+ try{
+  const count=await moveRecordsToArea(db,context.ids,areaId,context.inspectionId);
+  $('#moveRecordsDialog').close();recordMoveContext=null;clearRecordSelection();await reload();
+  toast(count+' records moved to '+areaName(areaId));
+ }catch(error){$('#moveRecordsError').hidden=false;$('#moveRecordsError').textContent=error.message||'The records could not be moved.'}
+ finally{recordMoveBusy=false;$('#commitRecordsMove').disabled=false;$('#cancelRecordsMove').disabled=false;renderRecordSelection()}
+}
+function initRecordSelection(){
+ const entries=$('#entries');let press=null,timer=null,suppressClick=false;
+ const clear=()=>{clearTimeout(timer);timer=null;press=null};
+ const select=id=>{suppressClick=true;recordSelecting=true;selectedRecordIds.add(id);renderRecordSelection()};
+ entries.addEventListener('pointerdown',event=>{
+  clear();suppressClick=false;if(event.button!==0||recordMoveBusy)return;
+  const card=event.target.closest('[data-entry]');if(!card)return;
+  press={id:card.dataset.entry,x:event.clientX,y:event.clientY};
+  timer=setTimeout(()=>{const id=press?.id;clear();if(id)select(id)},550);
+ });
+ entries.addEventListener('pointermove',event=>{if(press&&Math.hypot(event.clientX-press.x,event.clientY-press.y)>10)clear()});
+ for(const type of ['pointerup','pointercancel','pointerleave'])entries.addEventListener(type,clear);
+ $('#recordsPanel').addEventListener('scroll',clear,{passive:true});
+ entries.addEventListener('click',event=>{if(suppressClick){suppressClick=false;event.preventDefault();event.stopImmediatePropagation()}},true);
+ entries.addEventListener('contextmenu',event=>{const card=event.target.closest('[data-entry]');if(!card)return;event.preventDefault();clear();select(card.dataset.entry)});
+ $('#selectRecords').onclick=()=>{if(recordSelecting)clearRecordSelection();else{recordSelecting=true;renderRecordSelection()}};
+ $('#selectShownRecords').onclick=()=>{for(const card of entries.querySelectorAll('[data-entry]'))selectedRecordIds.add(card.dataset.entry);renderRecordSelection()};
+ $('#moveSelectedRecords').onclick=openRecordsMove;$('#moveRecordsForm').onsubmit=commitRecordsMove;
+ $('#moveRecordsDialog').addEventListener('cancel',event=>{if(recordMoveBusy)event.preventDefault()});
+}

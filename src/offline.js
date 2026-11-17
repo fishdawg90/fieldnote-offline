@@ -127,7 +127,7 @@ async function transcribeSaved(id){
  const entry=(await all('entries')).find(e=>e.id===id);if(!entry||entry.type!=='voice')return;
  if(['queued','processing'].includes(entry.transcriptionState))return;
  if(entry.text?.trim()&&!confirm('Replace this observation’s existing transcript / notes with a new Whisper transcript?'))return;
- await put('entries',{...entry,transcriptionState:'queued',transcriptionModelKey:selectedModelKey,transcriptionInterruptions:0,transcriptionStatus:'Queued for on-device transcription.'});
+ await patchEntryRecord(db,entry.id,{transcriptionState:'queued',transcriptionModelKey:selectedModelKey,transcriptionInterruptions:0,transcriptionStatus:'Queued for on-device transcription.'});
  await reload();void drainQueue();
 }
 async function drainQueue(){
@@ -140,7 +140,7 @@ async function drainQueue(){
    const check=await readiness(model.key);
    if(!check.ready){status('Queued audio is saved. Download '+model.name+' to transcribe it.');break}
    transcriptionBusy=entry.id;updateControls();
-   await put('entries',{...entry,transcriptionState:'processing',transcriptionStatus:'Transcribing on this phone…'});await reload();
+   await patchEntryRecord(db,entry.id,{transcriptionState:'processing',transcriptionStatus:'Transcribing on this phone…'});await reload();
    const began=performance.now();
    try{
     await prepareRecordMemory();
@@ -150,12 +150,12 @@ async function drainQueue(){
     const current=(await all('entries')).find(e=>e.id===entry.id);
     if(current){
      const updated={...current,text:result.text,transcriptionState:'done',transcriptionStatus:model.name+' · '+elapsed.toFixed(1)+' s · processed on this phone. Review technical terms, names and numbers.',transcriptionModel:model.id,transcriptionRevision:model.revision,transcribedAt:Date.now(),transcriptionSeconds:elapsed};
-     await put('entries',updated);syncOpenDetail(updated);
+     const saved=await patchEntryRecord(db,entry.id,{text:updated.text,transcriptionState:updated.transcriptionState,transcriptionStatus:updated.transcriptionStatus,...(updated.transcriptionState==='done'?{transcriptionModel:updated.transcriptionModel,transcriptionRevision:updated.transcriptionRevision,transcribedAt:updated.transcribedAt,transcriptionSeconds:updated.transcriptionSeconds}:{})});if(saved)syncOpenDetail(saved);
     }
     status(model.name+' finished in '+elapsed.toFixed(1)+' seconds.');
    }catch(error){
     const current=(await all('entries')).find(e=>e.id===entry.id);
-    if(current){const updated={...current,transcriptionState:'failed',transcriptionStatus:'Audio saved. Transcription failed: '+error.message};await put('entries',updated);syncOpenDetail(updated)}
+    if(current){const updated={...current,transcriptionState:'failed',transcriptionStatus:'Audio saved. Transcription failed: '+error.message};const saved=await patchEntryRecord(db,entry.id,{transcriptionState:updated.transcriptionState,transcriptionStatus:updated.transcriptionStatus});if(saved)syncOpenDetail(saved)}
     status('Transcription needs review: '+error.message);
    }finally{transcriptionBusy=null;await reload();updateControls()}
   }
@@ -166,7 +166,7 @@ function syncOpenDetail(entry){
  if($('#detail').open&&state.detail?.id===entry.id){state.detail=entry;$('#detailText').value=entry.text||'';$('#transcriptStatus').textContent=entry.transcriptionStatus}
 }
 async function restoreQueue(){
- for(const e of state.entries)if(e.transcriptionState==='processing'){const interruptions=(e.transcriptionInterruptions||0)+1;await put('entries',{...e,transcriptionInterruptions:interruptions,transcriptionState:interruptions<=1?'queued':'failed',transcriptionStatus:interruptions<=1?'Audio saved. Resuming interrupted on-device transcription.':'Audio saved. Transcription was interrupted repeatedly; tap Transcribe again to retry. Try Tiny English on this phone.'})}
+ for(const e of state.entries)if(e.transcriptionState==='processing'){const interruptions=(e.transcriptionInterruptions||0)+1;await patchEntryRecord(db,e.id,{transcriptionInterruptions:interruptions,transcriptionState:interruptions<=1?'queued':'failed',transcriptionStatus:interruptions<=1?'Audio saved. Resuming interrupted on-device transcription.':'Audio saved. Transcription was interrupted repeatedly; tap Transcribe again to retry. Try Tiny English on this phone.'})}
  await reload();void drainQueue();
 }
 async function localSampleTest(){

@@ -12,5 +12,8 @@
     "fflate": "0.8.2",
     "gdal3.js": "2.8.1",
     "leaflet": "1.9.4"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.8"
   }
 }

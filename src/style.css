@@ -77,3 +77,13 @@ main{max-width:var(--page-width);height:calc(100dvh - 54px - var(--dock-height) 
 #areaPicker .area{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.area-picker-hint{font-size:11px;color:var(--muted);margin:12px 0 0}#areaActions h2{overflow-wrap:anywhere}#areaActions p{font-size:13px}#confirmAreaDelete{min-height:44px}
 
 .photo-placeholder{min-height:64px;background:#e7eddf;color:var(--muted);padding:18px 12px;font-size:11px;width:100%;text-align:center}#recordsMemoryNote{font-size:11px;margin-top:0}#recordsMore{display:block;margin:15px auto}
+
+.records-heading #selectRecords{margin-left:auto;min-height:40px;padding:7px 12px}
+.record-selection-toolbar{position:sticky;top:39px;z-index:2;display:flex;align-items:center;gap:7px;background:var(--bg);padding:8px 0 12px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.record-selection-toolbar>span{font-size:12px;margin-right:auto;white-space:nowrap}
+.record-selection-toolbar button{font-size:11px;min-height:40px;padding:9px 11px}
+#entries .card{position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#entries .card.record-selected{border-color:#426f51;box-shadow:inset 0 0 0 2px #426f51}
+.selection-check{display:none;position:absolute;top:8px;left:8px;width:24px;height:24px;align-items:center;justify-content:center;border:2px solid #426f51;border-radius:50%;background:#fff;color:#fff;font-size:16px;z-index:1}
+.is-selecting .selection-check{display:flex}.record-selected .selection-check{background:#426f51}
+#moveRecordsDialog p{font-size:12px;line-height:1.5}#moveRecordsDialog button{min-height:44px}

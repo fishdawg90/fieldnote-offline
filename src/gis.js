@@ -214,6 +214,7 @@ function showRecordsView(){
  history.pushState({...history.state,fieldnoteRecords:true},'');$('#closeRecords').focus();
 }
 function hideRecordsView(){
+ clearRecordSelection();
  releaseRecordCards();
  $('#recordsPanel').hidden=true;document.body.classList.remove('records-open');gisMap?.invalidateSize();queueGISLabels();
 }
@@ -221,7 +222,7 @@ function closeRecordsView(){
  if(history.state?.fieldnoteRecords)history.back();else hideRecordsView();
 }
 function initCaptureLayout(){
- initAreaActions();
+ initAreaActions();initRecordSelection();
  $('#currentArea').onclick=()=>{if(!state.inspection)return editInspection();$('#areaPicker').showModal()};
  $('#editWorkingArea').onclick=()=>{$('#areaPicker').close();areaEdit(true)};
  $('#areas').addEventListener('click',event=>{if(event.target.closest('[data-area]'))$('#areaPicker').close()});

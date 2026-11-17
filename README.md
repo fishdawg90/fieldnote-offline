@@ -124,3 +124,11 @@ This addresses a suspected memory-pressure failure when combining original-resol
 Loading a layout creates one working area for each unique non-null Annex A6 label in the selected inspection, reusing existing names. Other inspections have their own areas. Opening an existing saved layout after upgrading also creates its areas once; if no inspection is selected, creation waits until one is named/selected. A per-inspection import marker prevents a deleted area from being recreated merely by reopening the app. Reimporting the GIS or explicitly tapping a deleted labelled shape can create it again.
 
 Tapping a labelled shape selects its working area for subsequent photos/voice notes. Selecting an area in the picker highlights its matching feature and displays its data, centring the view there; a manual area with no matching shape clears the feature panel. Unlabelled shapes remain grey and do not change the working area. A recording already in progress keeps the area captured when it started.
+
+## Move multiple records to a reference area
+
+In Records, long-press a card (or use Select) to enter selection mode. Tap additional photo/voice cards, then Change area, choose a destination in the current inspection, and Move records. Select shown selects the currently loaded batch; Load more lets the selection span further batches. Done or leaving Records clears selection. Changing inspection, area filter, type filter or search also clears selection.
+
+The move validates all selected records and the destination, then updates the group in one IndexedDB transaction. Original media, GPS and transcript fields are retained; stale/deleted or cross-inspection selections abort the whole move. Background transcription and late GPS now patch the latest stored record in a transaction so they cannot undo a reference-area move. Capture's current working area is not changed by moving existing records.
+
+Regression tests use fake-indexeddb to check mixed-media moves, rollback and competing transcript/GPS updates in both transaction orders. Browser QA exercised long-press selection and moving a synthetic photo and voice note from A4 to A5 through the visible interface.
