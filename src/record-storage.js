@@ -1,3 +1,4 @@
+import {savedRecordAreaSuggestion} from './gps-area.js';
 // Read and patch within one transaction, preserving concurrent area/GPS/transcript edits.
 export function patchEntryRecord(db, id, patch) {
  return new Promise((resolve,reject)=>{
@@ -30,5 +31,21 @@ export function moveRecordsToArea(db, ids, areaId, inspectionId) {
   t.objectStore('areas').getAll().onsuccess=event=>{areas=event.target.result;ready()};
   for(const id of unique)t.objectStore('entries').get(id).onsuccess=event=>{records.push(event.target.result);ready()};
   t.oncomplete=()=>resolve(unique.length);t.onerror=()=>reject(reason||t.error);t.onabort=()=>reject(reason||t.error||Error('Records were not moved'));
+ });
+}
+
+export function applyGPSAreaSuggestion(db,id,areaId,inspectionId,index){
+ return new Promise((resolve,reject)=>{
+  const t=db.transaction(['areas','entries'],'readwrite');let areas,entry,received=0,result=null,reason=null;
+  const ready=()=>{
+   if(++received!==2)return;
+   const source=areas.find(area=>area.id===entry?.area);
+   const suggestion=entry&&source?.inspectionId===inspectionId?savedRecordAreaSuggestion(index,entry,areas):null;
+   if(!suggestion||suggestion.areaId!==areaId){reason=Error('The GPS suggestion changed or is no longer available. Review the record again.');t.abort();return}
+   t.objectStore('entries').put({...entry,area:areaId,inspectionId});result=suggestion;
+  };
+  t.objectStore('areas').getAll().onsuccess=event=>{areas=event.target.result;ready()};
+  t.objectStore('entries').get(id).onsuccess=event=>{entry=event.target.result;ready()};
+  t.oncomplete=()=>resolve(result);t.onerror=()=>reject(reason||t.error);t.onabort=()=>reject(reason||t.error||Error('The record was not moved'));
  });
 }

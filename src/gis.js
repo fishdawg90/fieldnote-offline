@@ -1,5 +1,5 @@
 import {captureMapPoints,captureMapIcons} from './capture-map.js';
-import {gpsAreaIndex,gpsAreaStatus} from './gps-area.js';
+import {gpsAreaIndex,gpsAreaStatus,savedRecordAreaSuggestion} from './gps-area.js';
 import {annexAreaName} from './area-groups.js';
 import {assetDetails,assetValue,presentAssetValue,overallBand,collectAnnexReferences,missingGISAreaNames} from './asset-data.js';
 let gisMap=null,gisLayers=[],gisGPS=null,gisRecord=null,gisWorker=null,gisPending=null,gisFile=null,gisScan=null,gisBusy=false,gisTimer=null,gisLibraries=null,gisMode='geographic',gisRun=0;

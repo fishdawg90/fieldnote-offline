@@ -36,9 +36,9 @@ function edgeDistance(gps,rings,sx,sy){
  }
  return distance;
 }
-export function gpsAreaStatus(index,gps,selectedName,now=Date.now()){
+export function gpsAreaStatus(index,gps,selectedName,now=Date.now(),historical=false){
  const unknown={status:'unknown',areaName:null};
- if(!gps||!selectedName||!Number.isFinite(gps.latitude)||!Number.isFinite(gps.longitude)||Math.abs(gps.latitude)>85||Math.abs(gps.longitude)>180||!Number.isFinite(gps.accuracy)||gps.accuracy<=0||gps.accuracy>25||!Number.isFinite(gps.timestamp)||now-gps.timestamp<0||now-gps.timestamp>=15000)return unknown;
+ if(!gps||!selectedName||!Number.isFinite(gps.latitude)||!Number.isFinite(gps.longitude)||Math.abs(gps.latitude)>85||Math.abs(gps.longitude)>180||!Number.isFinite(gps.accuracy)||gps.accuracy<=0||gps.accuracy>25||(!historical&&(!Number.isFinite(gps.timestamp)||now-gps.timestamp<0||now-gps.timestamp>=15000)))return unknown;
  // Require the reported accuracy circle plus a small boundary margin to fit.
  const radius=gps.accuracy+3,sy=111195,sx=sy*Math.cos(gps.latitude*Math.PI/180),hits=new Set(),certain=new Set();
  for(const polygon of index){
@@ -51,4 +51,17 @@ export function gpsAreaStatus(index,gps,selectedName,now=Date.now()){
  if(certain.size!==1||hits.size!==1)return unknown;
  const areaName=[...certain][0];
  return {status:areaName===annexAreaName(selectedName)?'match':'different',areaName};
+}
+export function savedRecordAreaSuggestion(index,entry,areas){
+ const source=areas.find(area=>area.id===entry.area);if(!source)return null;
+ const valid=gps=>gps&&Number.isFinite(gps.latitude)&&Number.isFinite(gps.longitude)&&Math.abs(gps.latitude)<=85&&Math.abs(gps.longitude)<=180;
+ // EXIF often has no accuracy field: require a conservative 25 m boundary
+ // buffer rather than treating an exact point as a precise device fix.
+ const exif=entry.type==='photo'&&valid(entry.exifGPS)?entry.exifGPS:null;
+ const gps=exif?{...exif,accuracy:exif.accuracy??25}:entry.gps;
+ if(!valid(gps))return null;
+ const result=gpsAreaStatus(index,gps,source.name,0,true);
+ if(result.status!=='different')return null;
+ const target=areas.find(area=>area.inspectionId===source.inspectionId&&annexAreaName(area.name)===result.areaName);
+ return target?{areaId:target.id,areaName:target.name}:null;
 }

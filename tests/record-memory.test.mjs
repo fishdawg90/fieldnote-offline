@@ -7,7 +7,7 @@ function records({busy=false,hidden=false}={}){
  const rows=Array.from({length:30},(_,i)=>({id:String(i),area:'a',type:'photo',blob:{},created:i,text:''}));
  const state={entries:rows,urls:[],selected:'a',filter:'all',inspection:'i'},nodes={'#recordsPanel':{hidden},'#entries':{innerHTML:'',querySelectorAll:()=>[],replaceChildren(){this.innerHTML=''}},'#recordsMore':{},'#search':{value:''}};
  const created=[],revoked=[];let resets=0;
- const api=new Function('state','$','URL','transcriptionBusy','queueRunning','currentScope','resetWorker','esc','areaName','duration','stamp','clearRecordSelection','renderRecordSelection',source+';return {renderRecords,releaseRecordCards,setBusy(value){transcriptionBusy=value}};')(state,key=>nodes[key],{createObjectURL(blob){created.push(blob);return 'blob:'+created.length},revokeObjectURL(url){revoked.push(url)}},busy?'voice':null,false,()=>({areas:[{id:'a'}],entries:rows}),()=>resets++,String,()=> 'Area',()=>'',()=> 'Today',()=>{},()=>{});
+ const api=new Function('state','$','URL','transcriptionBusy','queueRunning','currentScope','resetWorker','esc','areaName','duration','stamp','clearRecordSelection','renderRecordSelection','savedRecordAreaSuggestion','gisGPSAreaIndex',source+';return {renderRecords,releaseRecordCards,setBusy(value){transcriptionBusy=value}};')(state,key=>nodes[key],{createObjectURL(blob){created.push(blob);return 'blob:'+created.length},revokeObjectURL(url){revoked.push(url)}},busy?'voice':null,false,()=>({areas:[{id:'a'}],entries:rows}),()=>resets++,String,()=> 'Area',()=>'',()=> 'Today',()=>{},()=>{},()=>null,[]);
  return {state,nodes,created,revoked,api,resets:()=>resets};
 }
 test('Records can be read during transcription without creating any image object URLs',()=>{
