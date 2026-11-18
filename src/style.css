@@ -94,3 +94,5 @@ main{max-width:var(--page-width);height:calc(100dvh - 54px - var(--dock-height) 
 .gis-record-legend{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;flex:none;margin-top:4px;color:var(--muted);font-size:9px;line-height:1.2}
 .gis-record-legend>span{display:inline-flex;gap:3px;align-items:center}.gis-record-legend svg{width:12px;height:12px;stroke-width:1.5}
 .capture-legend-photo{color:#247bb1}.capture-legend-voice{color:#8b57aa}
+
+.export-progress{margin:14px 0}.export-progress progress{width:100%;height:10px;accent-color:var(--green,#315d48)}.export-progress p{font-size:12px;color:var(--muted);margin:6px 0}

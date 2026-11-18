@@ -46,7 +46,7 @@ The home screen is areas, Photo, Voice and the journal. Settings contains Genera
 - Photos are stored byte-for-byte, preserving EXIF that the camera/browser supplies. Browsers can omit camera EXIF; a separate device location fix, time and accuracy is also saved where available.
 - Camera location is approximate and not shutter-synchronised. Imported photos are not assigned the import location. Native-recorder attachment locations are explicitly labelled as recorder-launch / attachment locations, not guaranteed audio start positions.
 - GPS may take longer without mobile data. Map links require internet. These are not survey coordinates.
-- **Export files + GPS** creates a ZIP of original media, transcript text files, GPS JSON sidecars, a CSV index and separate geotagged JPEG copies where possible.
+- **Export inspection** creates a ZIP with smaller photo copies, original audio, transcript text files, GPS JSON sidecars and a CSV index. Each photo appears once, with embedded GPS where possible.
 - **Full backup** creates a JSON backup including media. **Restore backup** merges by record ID and also accepts backups from the earlier standalone Fieldnote HTML.
 - Export regularly. Clearing site/browser data removes records, offline runtime and model. Persistent storage is requested but is subject to browser/employer policies.
 - Use device file sharing/email to send exported files; there is no cloud upload path in the app.
@@ -153,3 +153,14 @@ The area button is pale green when a recent GPS accuracy circle fits inside the 
 Confidence requires a fix less than 15 seconds old, reported accuracy of 25 metres or better, and the entire accuracy radius plus a 3 metre margin inside a labelled polygon. Boundary positions, holes, overlapping different references, unlabelled coverage and locations outside the layout remain neutral. The check is deliberately conservative at seams between polygons, including same-prefix polygons. GPS accuracy is an estimate, not a survey guarantee. Status expires automatically and clears while the app is hidden.
 
 Tapping Photo with a confident different area offers to switch to the matching existing area in the current inspection before opening the camera. Accepting updates the capture reference and GIS details; declining retains the selected area and continues capture. The same check applies to Phone camera from Settings; switching from an already open in-app camera retains that camera session's reference. No background GPS permissions or uploads are added.
+
+
+## Smaller photo exports and progress
+
+Inspection ZIP exports resize photos to at most 2048 pixels on the long edge, preserving aspect ratio and using JPEG quality 0.82. Small photos are never enlarged. A recompressed copy is used only when it is smaller; unsupported/unreadable images fall back to the original, with the fallback count displayed. This affects export only: stored originals and Full backup are unchanged. Audio is unchanged.
+
+There is one exported photo per record rather than an original plus a duplicate geotagged image. GPS is reinserted into JPEG copies, preferring original EXIF coordinates over device GPS, and the JSON sidecars preserve both original sources, timestamps and accuracy. Sidecars report original/export sizes and exported filename/MIME, and CSV filenames follow the exported extension. Compressed copies may omit other original EXIF metadata; Full backup retains original bytes.
+
+A progress bar in Settings → Data shows photo preparation, ZIP creation and download readiness. Photos process sequentially and release the decoded image and canvas after each record. ZIP creation reads CRC data in 256 KB slices and retains Blob references rather than complete byte arrays per file, yielding between slices so progress can paint. Completion reports the reduction in photo bytes. The browser's download UI handles the final disk-save step.
+
+Validation includes ZIP binary/Unicode/empty-file round trips, progress monotonicity, resolution rules and export filename/sidecar/GPS consistency. Browser QA exported three synthetic 4032×3024 JPEGs: each reduced from 15,545,938 to 1,575,147 bytes at 2048×1536. The downloaded ZIP passed CRC validation and retained the test EXIF coordinates. Savings vary with the source photo.
